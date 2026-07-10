@@ -25,7 +25,7 @@ import { applyWindowMaterial, getDefaultWindowMaterial } from './utils/windowUti
 
 // Windows 平台需要设置 AppUserModelId 才能让单例锁正常工作
 if (process.platform === 'win32') {
-  app.setAppUserModelId('link.eiot.ztools')
+  app.setAppUserModelId('top.z-tools')
 }
 
 // 单例锁

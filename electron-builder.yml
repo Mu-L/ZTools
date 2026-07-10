@@ -1,15 +1,20 @@
-appId: link.eiot.ztools
+appId: top.z-tools
 productName: ZTools
 publish: null
 directories:
   buildResources: build
 files:
   - '!**/.vscode/*'
+  - '!**/.DS_Store'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml}'
+  - '!{CHANGELOG.md,changelog.md,README.md,README_EN.md,CONTRIBUTING.md,CLAUDE.md}'
+  - '!{.env,.env.*,.npmrc,.gitmodules,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,tsconfig.*.tsbuildinfo,vitest.config.*}'
+  - '!{.claude/**,.githooks/**,.github/**}'
+  - '!docs/**'
+  - '!tests/**'
   - '!updater/**'
   - '!ztools-api-types/**'
   - '!ztools-plugin-cli/**'
