@@ -12,7 +12,11 @@ import { httpGet } from '../../utils/httpRequest.js'
 import { sleep } from '../../utils/common.js'
 import databaseAPI from '../shared/database'
 import { openDialog } from '../../utils/windowUtils'
-import { getPluginMarketApiBase, requestPluginMarket } from './pluginMarketConfig'
+import {
+  PluginMarketAuthMode,
+  getPluginMarketApiBase,
+  requestPluginMarket
+} from './pluginMarketConfig'
 import { getPluginsPath } from '../../core/appData/appDataPaths'
 
 /** 插件的本地安装目录 */
@@ -409,7 +413,9 @@ export class PluginInstallerAPI {
 
     const marketApiBase = getPluginMarketApiBase()
     const response = await requestPluginMarket(
-      `${marketApiBase}/plugins/download?name=${encodeURIComponent(pluginName)}`
+      `${marketApiBase}/plugins/download?name=${encodeURIComponent(pluginName)}`,
+      {},
+      PluginMarketAuthMode.OPTIONAL
     )
     const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
     if (typeof data?.downloadUrl === 'string' && data.downloadUrl.trim()) {
