@@ -83,21 +83,6 @@ export function withReleaseNotes(metadata, releaseNotes) {
 }
 
 /**
- * 从语义版本中提取 electron-updater 预发布 channel。
- * @param {string} version 应用版本号。
- * @returns {string | null} 预发布 channel，稳定版返回 null。
- */
-export function getPrereleaseChannel(version) {
-  const prerelease = String(version).split('-', 2)[1]
-  if (!prerelease) return null
-  const channel = prerelease
-    .split('.', 1)[0]
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '')
-  return channel || null
-}
-
-/**
  * 校验元数据引用的更新文件存在于其构建产物目录。
  * @param {string} metadataPath 单架构元数据文件路径。
  * @param {Record<string, any>} fileInfo 元数据中的文件信息。

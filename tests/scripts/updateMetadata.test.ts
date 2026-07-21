@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  getPrereleaseChannel,
-  mergeMacUpdateMetadata,
-  selectMacUpdateZip
-} from '../../scripts/update-metadata.mjs'
+import { mergeMacUpdateMetadata, selectMacUpdateZip } from '../../scripts/update-metadata.mjs'
 
 const x64Metadata = {
   version: '3.0.0-beta.9',
@@ -60,11 +56,5 @@ describe('macOS update metadata', () => {
         'arm64'
       )
     ).toThrow('缺少 SHA-512')
-  })
-
-  it('derives prerelease channels without changing stable releases', () => {
-    expect(getPrereleaseChannel('3.0.0-beta.9')).toBe('beta')
-    expect(getPrereleaseChannel('3.0.0-rc.1')).toBe('rc')
-    expect(getPrereleaseChannel('3.0.0')).toBeNull()
   })
 })

@@ -7,7 +7,6 @@ import {
   generateDownloadLinksMarkdown
 } from './version-utils.mjs'
 import {
-  getPrereleaseChannel,
   mergeMacUpdateMetadata,
   readUpdateMetadata,
   selectMacUpdateZip,
@@ -40,20 +39,12 @@ const macArm64MetadataPath = process.env.MAC_ARM64_UPDATE_METADATA
 const metadataOutputDir =
   process.env.UPDATE_METADATA_OUTPUT_DIR || path.dirname(windowsMetadataPath)
 const requireUpdateMetadata = process.env.REQUIRE_UPDATE_METADATA === 'true'
-const prereleaseChannel = getPrereleaseChannel(version)
 
 if (existsSync(windowsMetadataPath)) {
   const windowsMetadata = withReleaseNotes(readUpdateMetadata(windowsMetadataPath), changelog)
   const windowsOutputPath = path.join(metadataOutputDir, 'latest.yml')
   writeUpdateMetadata(windowsOutputPath, windowsMetadata)
   console.log(`✅ 已生成 ${windowsOutputPath}`)
-
-  // 预发布客户端优先请求自己的 channel 文件，同时保留 latest.yml 作为兼容回退。
-  if (prereleaseChannel) {
-    const channelOutputPath = path.join(metadataOutputDir, `${prereleaseChannel}.yml`)
-    writeUpdateMetadata(channelOutputPath, windowsMetadata)
-    console.log(`✅ 已生成 ${channelOutputPath}`)
-  }
 } else {
   const message = `未找到 Windows 更新元数据: ${windowsMetadataPath}`
   if (requireUpdateMetadata) throw new Error(message)
@@ -78,12 +69,6 @@ if (macX64MetadataPath || macArm64MetadataPath) {
   const macOutputPath = path.join(metadataOutputDir, 'latest-mac.yml')
   writeUpdateMetadata(macOutputPath, macMetadata)
   console.log(`✅ 已生成 ${macOutputPath}`)
-
-  if (prereleaseChannel) {
-    const channelOutputPath = path.join(metadataOutputDir, `${prereleaseChannel}-mac.yml`)
-    writeUpdateMetadata(channelOutputPath, macMetadata)
-    console.log(`✅ 已生成 ${channelOutputPath}`)
-  }
 } else if (requireUpdateMetadata) {
   throw new Error('缺少 macOS 双架构更新元数据路径')
 }
