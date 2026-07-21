@@ -1,7 +1,68 @@
 import { spawn } from 'child_process'
 import { dialog, shell } from 'electron'
-import { UwpManager } from '../native'
+import { UwpManager, WindowsShellLauncher } from '../native'
 import type { ConfirmDialogOptions } from './types'
+
+type ElectronShellFallback = 'openPath' | 'openExternal'
+
+async function openWithElectronShell(
+  appPath: string,
+  fallback: ElectronShellFallback
+): Promise<void> {
+  if (fallback === 'openExternal') {
+    await shell.openExternal(appPath)
+    return
+  }
+
+  const error = await shell.openPath(appPath)
+  if (!error) {
+    return
+  }
+
+  if (appPath.toLowerCase().endsWith('.exe')) {
+    try {
+      await shell.openExternal(appPath)
+      return
+    } catch (externalError) {
+      console.error('[Launcher] openExternal 启动也失败:', externalError)
+    }
+  }
+
+  throw new Error(`启动失败: ${error}`)
+}
+
+async function openApplicationViaExplorer(
+  appPath: string,
+  fallback: ElectronShellFallback
+): Promise<void> {
+  try {
+    const result = await WindowsShellLauncher.launch({
+      target: appPath,
+      showCommand: 1
+    })
+    if (result.success) {
+      console.log(`[Launcher] 已通过 Explorer 启动: ${appPath}`)
+      return
+    }
+
+    const hresultHex = `0x${(result.hresult >>> 0).toString(16).padStart(8, '0')}`
+    console.warn('[Launcher] Explorer COM 启动失败，回退 Electron Shell:', {
+      target: appPath,
+      hresult: result.hresult,
+      hresultHex,
+      stage: result.stage,
+      fallback
+    })
+  } catch (error) {
+    console.warn('[Launcher] Explorer COM 调用异常，回退 Electron Shell:', {
+      target: appPath,
+      fallback,
+      error
+    })
+  }
+
+  await openWithElectronShell(appPath, fallback)
+}
 
 /**
  * 执行系统命令（不等待进程结束，适用于 GUI 应用）
@@ -74,11 +135,10 @@ export async function launchApp(
   }
 
   // 检查是否是协议链接（如 ms-settings:, steam://, battlenet:// 等）
-  // 协议链接必须使用 shell.openExternal()，shell.openPath() 会卡住
+  // 协议链接失败时必须回退 openExternal，openPath 可能卡住。
   if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:/.test(appPath) && !appPath.includes('\\')) {
     try {
-      await shell.openExternal(appPath)
-      console.log(`[Launcher] 成功打开协议链接: ${appPath}`)
+      await openApplicationViaExplorer(appPath, 'openExternal')
       return
     } catch (error) {
       console.error('[Launcher] 打开协议链接失败:', error)
@@ -160,44 +220,10 @@ export async function launchApp(
     return
   }
 
-  // 先尝试使用 shell.openPath()（适用于大多数情况，包括 .lnk 快捷方式）
-  return new Promise((resolve, reject) => {
-    shell
-      .openPath(appPath)
-      .then((error) => {
-        if (error) {
-          console.error('[Launcher] shell.openPath 失败:', error)
+  if (appPath.toLowerCase().endsWith('.exe') || appPath.toLowerCase().endsWith('.lnk')) {
+    await openApplicationViaExplorer(appPath, 'openPath')
+    return
+  }
 
-          // .lnk 文件如果失败，直接报错（不应该失败）
-          if (appPath.toLowerCase().endsWith('.lnk')) {
-            reject(new Error(`快捷方式启动失败: ${error}`))
-            return
-          }
-
-          // 对于 .exe 文件，尝试使用 shell.openExternal()
-          if (appPath.toLowerCase().endsWith('.exe')) {
-            console.log('[Launcher] 尝试使用 openExternal 启动...')
-            shell
-              .openExternal(appPath)
-              .then(() => {
-                console.log(`[Launcher] 成功启动应用（openExternal）: ${appPath}`)
-                resolve()
-              })
-              .catch((extError) => {
-                console.error('[Launcher] openExternal 启动也失败:', extError)
-                reject(new Error(`启动失败: ${error}`))
-              })
-          } else {
-            reject(new Error(`启动失败: ${error}`))
-          }
-        } else {
-          console.log(`[Launcher] 成功启动应用: ${appPath}`)
-          resolve()
-        }
-      })
-      .catch((error) => {
-        console.error('[Launcher] 启动应用失败:', error)
-        reject(error)
-      })
-  })
+  await openWithElectronShell(appPath, 'openPath')
 }

@@ -26,6 +26,20 @@ interface UwpAppInfo {
   installLocation: string
 }
 
+export interface ExplorerLaunchOptions {
+  target: string
+  parameters?: string
+  workingDirectory?: string
+  verb?: string
+  showCommand?: number
+}
+
+export interface ExplorerLaunchResult {
+  success: boolean
+  hresult: number
+  stage: string
+}
+
 export interface WindowsShortcutInfo {
   name: string
   path: string
@@ -90,6 +104,7 @@ interface NativeAddon {
   stopMouseMonitor: () => void
   getUwpApps: () => UwpAppInfo[]
   launchUwpApp: (appId: string) => boolean
+  launchViaExplorer: (options: ExplorerLaunchOptions) => Promise<ExplorerLaunchResult>
   getFileIcon: (filePath: string) => Promise<Buffer>
   resolveMuiStrings: (refs: string[]) => { [ref: string]: string }
   scanWindowsShortcuts: (
@@ -949,6 +964,33 @@ export class UwpManager {
       throw new TypeError('appId must be a non-empty string')
     }
     return (addon as NativeAddon).launchUwpApp(appId)
+  }
+}
+
+export class WindowsShellLauncher {
+  static launch(options: ExplorerLaunchOptions): Promise<ExplorerLaunchResult> {
+    if (platform !== 'win32') {
+      throw new Error('launchViaExplorer is only supported on Windows')
+    }
+    if (!options || typeof options.target !== 'string' || options.target.trim() === '') {
+      throw new TypeError('target must be a non-empty string')
+    }
+    for (const field of ['parameters', 'workingDirectory', 'verb'] as const) {
+      const value = options[field]
+      if (value !== undefined && typeof value !== 'string') {
+        throw new TypeError(`${field} must be a string`)
+      }
+    }
+    if (
+      options.showCommand !== undefined &&
+      (!Number.isInteger(options.showCommand) ||
+        options.showCommand < 0 ||
+        options.showCommand > 11)
+    ) {
+      throw new RangeError('showCommand must be an integer between 0 and 11')
+    }
+
+    return (addon as NativeAddon).launchViaExplorer(options)
   }
 }
 

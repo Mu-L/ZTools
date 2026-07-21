@@ -4,6 +4,7 @@ import path from 'path'
 import { pinyin as getPinyin } from 'pinyin-pro'
 import databaseAPI from '../shared/database'
 import { openDialog } from '../../utils/windowUtils'
+import { launchApp } from '../../core/commandLauncher'
 
 /**
  * 本地启动项类型
@@ -119,7 +120,8 @@ export class LocalShortcutsAPI {
         // Windows 可执行文件或快捷方式视为应用
         if (
           process.platform === 'win32' &&
-          (selectedPath.endsWith('.exe') || selectedPath.endsWith('.lnk'))
+          (selectedPath.toLowerCase().endsWith('.exe') ||
+            selectedPath.toLowerCase().endsWith('.lnk'))
         ) {
           itemType = 'app'
         } else {
@@ -223,7 +225,8 @@ export class LocalShortcutsAPI {
         // Windows 可执行文件或快捷方式视为应用
         if (
           process.platform === 'win32' &&
-          (selectedPath.endsWith('.exe') || selectedPath.endsWith('.lnk'))
+          (selectedPath.toLowerCase().endsWith('.exe') ||
+            selectedPath.toLowerCase().endsWith('.lnk'))
         ) {
           itemType = 'app'
         } else {
@@ -378,7 +381,13 @@ export class LocalShortcutsAPI {
    */
   private async openShortcut(shortcutPath: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // 使用 shell.openPath 打开文件/文件夹/应用
+      const shortcut = this.getAllShortcuts().find((item) => item.path === shortcutPath)
+      if (process.platform === 'win32' && shortcut?.type === 'app') {
+        await launchApp(shortcutPath)
+        return { success: true }
+      }
+
+      // 文件和文件夹保持系统默认打开行为。
       const result = await shell.openPath(shortcutPath)
 
       if (result) {

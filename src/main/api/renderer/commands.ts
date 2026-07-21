@@ -519,11 +519,13 @@ export class AppsAPI {
         this.mainWindow?.hide()
       } else {
         // 直接启动（app / system-setting / local-shortcut / UWP / 协议链接）
-        // 检查是否为本地启动项（需要 shell.openPath 而非 launchApp）
+        // 本地应用走统一启动器，文件和文件夹继续使用 shell.openPath。
         const localShortcuts = databaseAPI.dbGet('local-shortcuts')
-        const isLocalShortcut = localShortcuts?.some((s: any) => s.path === appPath)
+        const localShortcut = Array.isArray(localShortcuts)
+          ? localShortcuts.find((shortcut: any) => shortcut.path === appPath)
+          : undefined
 
-        if (isLocalShortcut) {
+        if (localShortcut && !(process.platform === 'win32' && localShortcut.type === 'app')) {
           const result = await shell.openPath(appPath)
           if (result) {
             console.error('[Commands] 打开本地启动项失败:', result)
