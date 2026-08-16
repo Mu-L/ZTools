@@ -4,7 +4,9 @@ import databaseAPI from '../api/shared/database.js'
 import { HOST_STORAGE_KEYS } from '../../shared/storageKeys.js'
 import {
   AI_PROVIDER_STORE_VERSION,
+  DEFAULT_AI_API_FORMAT,
   isAiProviderStore,
+  normalizeAiApiFormat,
   normalizeAiApiUrl,
   type AiModelChoice,
   type AiProvider,
@@ -82,6 +84,7 @@ export function migrateLegacyAiModels(
         name: sequence === 1 ? baseName : `${baseName} ${sequence}`,
         apiUrl,
         apiKey,
+        apiFormat: DEFAULT_AI_API_FORMAT,
         enabled: true,
         selectedModels: []
       }
@@ -166,6 +169,7 @@ class AiProviderService {
       name: input.name.trim(),
       apiUrl: normalizeAiApiUrl(input.apiUrl),
       apiKey: input.apiKey.trim(),
+      apiFormat: normalizeAiApiFormat(input.apiFormat),
       enabled: true,
       selectedModels: this.buildSelectedModels(input, [])
     }
@@ -216,6 +220,7 @@ class AiProviderService {
       name: nextName,
       apiUrl: normalizeAiApiUrl(input.apiUrl),
       apiKey: input.apiKey.trim(),
+      apiFormat: normalizeAiApiFormat(input.apiFormat),
       enabled: previous.enabled,
       selectedModels: nextModels
     }
@@ -454,6 +459,13 @@ class AiProviderService {
       // 旧版供应商没有开启状态，升级时保持原有可用行为。
       if (typeof provider.enabled !== 'boolean') {
         provider.enabled = true
+        changed = true
+      }
+
+      // 历史供应商未保存接口格式，升级时回退为默认的 OpenAI Chat Completions。
+      const normalizedFormat = normalizeAiApiFormat(provider.apiFormat)
+      if (provider.apiFormat !== normalizedFormat) {
+        provider.apiFormat = normalizedFormat
         changed = true
       }
 
