@@ -251,7 +251,7 @@ pnpm build:unpack       # 打包但不生成安装包（调试用）
 
 ## ⭐ Star 历史
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.com/#lzx8589561/ZTools&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.dera.page/#lzx8589561/ZTools&Date)
 
 ---
 
