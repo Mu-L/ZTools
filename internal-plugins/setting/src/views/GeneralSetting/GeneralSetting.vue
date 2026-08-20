@@ -196,6 +196,7 @@ const spaceOpenCommand = ref(false)
 
 // Esc 直接隐藏窗口（默认关，保持上游 Esc 回搜索）
 const escHideWindow = ref(false)
+const autoBackToSearchBeforeEscHide = ref<AutoBackToSearchOption | null>(null)
 
 // 悬浮球双击目标指令
 const floatingBallDoubleClickCommand = ref('')
@@ -570,6 +571,16 @@ async function handleAutoBackToSearchChange(): Promise<void> {
 // 处理 Esc 直接隐藏窗口变化
 async function handleEscHideWindowChange(): Promise<void> {
   try {
+    if (escHideWindow.value) {
+      autoBackToSearchBeforeEscHide.value = autoBackToSearch.value
+      if (autoBackToSearch.value !== 'immediately') {
+        autoBackToSearch.value = 'immediately'
+        await window.ztools.internal.updateAutoBackToSearch('immediately')
+      }
+    } else if (autoBackToSearchBeforeEscHide.value) {
+      autoBackToSearch.value = autoBackToSearchBeforeEscHide.value
+      await window.ztools.internal.updateAutoBackToSearch(autoBackToSearch.value)
+    }
     await saveSettings()
     console.log('Esc 直接隐藏窗口已更新:', escHideWindow.value)
   } catch (error) {
@@ -1330,6 +1341,22 @@ async function loadSettings(): Promise<void> {
       // 空格打开指令
       spaceOpenCommand.value = data.spaceOpenCommand ?? false
       escHideWindow.value = data.escHideWindow ?? false
+      autoBackToSearchBeforeEscHide.value = data.autoBackToSearchBeforeEscHide ?? null
+      if (escHideWindow.value) {
+        let shouldPersistEscHideConstraint = false
+        if (autoBackToSearchBeforeEscHide.value == null) {
+          autoBackToSearchBeforeEscHide.value = autoBackToSearch.value
+          shouldPersistEscHideConstraint = true
+        }
+        if (autoBackToSearch.value !== 'immediately') {
+          autoBackToSearch.value = 'immediately'
+          await window.ztools.internal.updateAutoBackToSearch('immediately')
+          shouldPersistEscHideConstraint = true
+        }
+        if (shouldPersistEscHideConstraint) {
+          await saveSettings()
+        }
+      }
       // 悬浮球双击目标指令
       floatingBallDoubleClickCommand.value = data.floatingBallDoubleClickCommand ?? ''
 
@@ -1421,6 +1448,7 @@ async function saveSettings(): Promise<void> {
       tabTargetCommand: tabTargetCommand.value,
       spaceOpenCommand: spaceOpenCommand.value,
       escHideWindow: escHideWindow.value,
+      autoBackToSearchBeforeEscHide: autoBackToSearchBeforeEscHide.value,
       floatingBallDoubleClickCommand: floatingBallDoubleClickCommand.value,
       floatingBallEnabled: floatingBallEnabled.value,
       floatingBallLetter: floatingBallLetter.value,
@@ -2115,6 +2143,7 @@ onUnmounted(() => {
           <Dropdown
             v-model="autoBackToSearch"
             :options="autoBackToSearchOptions"
+            :disabled="escHideWindow"
             @change="handleAutoBackToSearchChange"
           />
         </div>
