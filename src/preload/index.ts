@@ -53,7 +53,8 @@ const api = {
   }) => ipcRenderer.invoke('launch', options),
   launchAsAdmin: (appPath: string, name?: string) =>
     ipcRenderer.invoke('launch-as-admin', appPath, name),
-  hideWindow: () => ipcRenderer.send('hide-window'),
+  hideWindow: (skipAutoBackToSearch?: boolean) =>
+    ipcRenderer.send('hide-window', skipAutoBackToSearch),
   resizeWindow: (height: number) => ipcRenderer.send('resize-window', height),
   updateLaunchContext: (context: {
     searchQuery: string
@@ -567,7 +568,7 @@ declare global {
         cmdType?: string
         confirmDialog?: any
       }) => Promise<void>
-      hideWindow: () => void
+      hideWindow: (skipAutoBackToSearch?: boolean) => void
       resizeWindow: (height: number) => void
       updateLaunchContext: (context: {
         searchQuery: string

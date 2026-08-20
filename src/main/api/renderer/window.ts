@@ -20,7 +20,9 @@ export class WindowAPI {
   }
 
   private setupIPC(): void {
-    ipcMain.on('hide-window', () => this.hideWindow())
+    ipcMain.on('hide-window', (_event, skipAutoBackToSearch?: boolean) =>
+      this.hideWindow(true, skipAutoBackToSearch)
+    )
     ipcMain.on('resize-window', (_event, height: number) => this.resizeWindow(height))
     ipcMain.on('update-launch-context', (_event, context: any) => this.updateLaunchContext(context))
     ipcMain.handle('get-window-position', () => this.getWindowPosition())
@@ -83,8 +85,11 @@ export class WindowAPI {
     })
   }
 
-  private hideWindow(isRestorePreWindow: boolean = true): void {
-    windowManager.hideWindow(isRestorePreWindow)
+  private hideWindow(
+    isRestorePreWindow: boolean = true,
+    skipAutoBackToSearch: boolean = false
+  ): void {
+    windowManager.hideWindow(isRestorePreWindow, skipAutoBackToSearch)
   }
 
   public resizeWindow(height: number): void {

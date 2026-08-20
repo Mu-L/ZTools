@@ -194,6 +194,9 @@ const tabKeyFunction = ref<'navigate' | 'target-command'>('navigate')
 // 空格打开指令
 const spaceOpenCommand = ref(false)
 
+// Esc 直接隐藏窗口（默认关，保持上游 Esc 回搜索）
+const escHideWindow = ref(false)
+
 // 悬浮球双击目标指令
 const floatingBallDoubleClickCommand = ref('')
 
@@ -561,6 +564,16 @@ async function handleAutoBackToSearchChange(): Promise<void> {
     console.log('自动返回搜索配置已更新:', autoBackToSearch.value)
   } catch (error) {
     console.error('保存自动返回搜索配置失败:', error)
+  }
+}
+
+// 处理 Esc 直接隐藏窗口变化
+async function handleEscHideWindowChange(): Promise<void> {
+  try {
+    await saveSettings()
+    console.log('Esc 直接隐藏窗口已更新:', escHideWindow.value)
+  } catch (error) {
+    console.error('保存 Esc 直接隐藏窗口失败:', error)
   }
 }
 
@@ -1316,6 +1329,7 @@ async function loadSettings(): Promise<void> {
       tabTargetCommand.value = data.tabTargetCommand ?? ''
       // 空格打开指令
       spaceOpenCommand.value = data.spaceOpenCommand ?? false
+      escHideWindow.value = data.escHideWindow ?? false
       // 悬浮球双击目标指令
       floatingBallDoubleClickCommand.value = data.floatingBallDoubleClickCommand ?? ''
 
@@ -1406,6 +1420,7 @@ async function saveSettings(): Promise<void> {
       tabKeyFunction: tabKeyFunction.value,
       tabTargetCommand: tabTargetCommand.value,
       spaceOpenCommand: spaceOpenCommand.value,
+      escHideWindow: escHideWindow.value,
       floatingBallDoubleClickCommand: floatingBallDoubleClickCommand.value,
       floatingBallEnabled: floatingBallEnabled.value,
       floatingBallLetter: floatingBallLetter.value,
@@ -2102,6 +2117,19 @@ onUnmounted(() => {
             :options="autoBackToSearchOptions"
             @change="handleAutoBackToSearchChange"
           />
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-label">
+          <span>Esc 直接隐藏窗口</span>
+          <span class="setting-desc">按下 Esc 不返回搜索界面，直接隐藏 ZTools 并回到上一应用</span>
+        </div>
+        <div class="setting-control">
+          <label class="toggle">
+            <input v-model="escHideWindow" type="checkbox" @change="handleEscHideWindowChange" />
+            <span class="toggle-slider"></span>
+          </label>
         </div>
       </div>
 

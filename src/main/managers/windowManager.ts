@@ -1001,8 +1001,8 @@ class WindowManager {
   /**
    * 隐藏窗口
    */
-  public hideWindow(_restoreFocus: boolean = true): void {
-    console.log('[Window] 隐藏窗口', _restoreFocus)
+  public hideWindow(_restoreFocus: boolean = true, skipAutoBackToSearch: boolean = false): void {
+    console.log('[Window] 隐藏窗口', _restoreFocus, skipAutoBackToSearch)
 
     // 记录当前的焦点状态（在隐藏之前）
     this.recordFocusState()
@@ -1012,8 +1012,10 @@ class WindowManager {
       this.restorePreviousWindow()
     }
 
-    // 启动自动返回搜索定时器
-    this.startAutoBackToSearchTimer()
+    // Esc 直接藏窗时跳过，避免后台仍卸插件回搜索
+    if (!skipAutoBackToSearch) {
+      this.startAutoBackToSearchTimer()
+    }
   }
 
   public withBlurHideSuppressed<T>(
