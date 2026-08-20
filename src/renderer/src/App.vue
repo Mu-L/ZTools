@@ -510,6 +510,22 @@ async function handleKeydown(event: KeyboardEvent): Promise<void> {
     event.preventDefault()
 
     if (currentView.value === ViewMode.Plugin) {
+      if (
+        searchQuery.value.trim() ||
+        pastedImageData.value ||
+        pastedFilesData.value ||
+        pastedTextData.value
+      ) {
+        console.log('[PluginExit] ESC 触发分步退出逻辑')
+        handlePluginStepExit()
+        return
+      }
+      const settings = (await window.ztools.dbGet('settings-general')) || {}
+      if (settings.escHideWindow) {
+        console.log('[PluginExit] ESC 直接隐藏窗口')
+        window.ztools.hideWindow(true)
+        return
+      }
       console.log('[PluginExit] ESC 触发分步退出逻辑')
       handlePluginStepExit()
       return

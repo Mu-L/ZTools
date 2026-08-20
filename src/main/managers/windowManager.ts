@@ -786,14 +786,8 @@ class WindowManager {
     // 判断窗口是否聚焦显示
     // 修复：同时检查聚焦和可见状态，避免alert弹窗后判断错误
     if (isFocused && isVisible) {
-      // 窗口已显示且聚焦 → 隐藏
-
-      // 记录当前的焦点状态（在隐藏之前）
-      this.recordFocusState()
-
-      this.mainWindow.blur()
-      this.mainWindow.hide()
-      this.restorePreviousWindow()
+      // 窗口已显示且聚焦 → 隐藏（macOS 走 app.hide，不是 win.hide/minimize）
+      this.hideWindow(true)
     } else {
       // 窗口已隐藏或失焦 → 显示并强制激活
       // 但如果是刚刚因为 blur 事件隐藏的（点击托盘图标导致失焦），
@@ -967,6 +961,11 @@ class WindowManager {
   public showWindow(): void {
     if (!this.mainWindow) return
 
+    // app.hide() 之后必须 app.show() 才能再唤出；与 hide 成对，不抢占其它 App 的搜索框逻辑。
+    if (platform.isMacOS && typeof app.isHidden === 'function' && app.isHidden()) {
+      app.show()
+    }
+
     // 开始恢复焦点流程，防止 focus 事件监听器修改 lastFocusTarget
     this.isRestoringFocus = true
 
@@ -999,21 +998,30 @@ class WindowManager {
   }
 
   /**
-   * 隐藏窗口
+   * 隐藏窗口。
+   * macOS 且需要还焦点时走系统级 Hide Application（app.hide / 等价 Cmd+H），
+   * 不要 win.hide / minimize，也不要再叠 restorePreviousWindow。
+   * Windows / Linux 仍 hide BrowserWindow 后再 restorePreviousWindow。
    */
-  public hideWindow(_restoreFocus: boolean = true): void {
-    console.log('[Window] 隐藏窗口', _restoreFocus)
+  public hideWindow(_restoreFocus: boolean = true, skipAutoBackToSearch: boolean = false): void {
+    console.log('[Window] 隐藏窗口', _restoreFocus, skipAutoBackToSearch)
 
     // 记录当前的焦点状态（在隐藏之前）
     this.recordFocusState()
 
-    this.mainWindow?.hide()
-    if (_restoreFocus) {
-      this.restorePreviousWindow()
+    if (platform.isMacOS && _restoreFocus) {
+      app.hide()
+    } else {
+      this.mainWindow?.hide()
+      if (_restoreFocus) {
+        this.restorePreviousWindow()
+      }
     }
 
-    // 启动自动返回搜索定时器
-    this.startAutoBackToSearchTimer()
+    // Esc 直接藏窗时跳过，避免后台仍卸插件回搜索
+    if (!skipAutoBackToSearch) {
+      this.startAutoBackToSearchTimer()
+    }
   }
 
   public withBlurHideSuppressed<T>(

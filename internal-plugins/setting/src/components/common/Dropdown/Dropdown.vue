@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { DropdownEmits, DropdownOption, DropdownProps } from './Dropdown'
 
 const props = withDefaults(defineProps<DropdownProps>(), {
-  placeholder: '请选择'
+  placeholder: '请选择',
+  disabled: false
 })
 
 const emit = defineEmits<DropdownEmits>()
@@ -19,6 +20,9 @@ const selectedLabel = computed(() => {
 
 // 切换下拉菜单
 function toggleDropdown(): void {
+  if (props.disabled) {
+    return
+  }
   isOpen.value = !isOpen.value
 }
 
@@ -45,8 +49,8 @@ onBeforeUnmount(() => {
 })
 </script>
 <template>
-  <div ref="dropdownRef" class="dropdown" :class="{ open: isOpen }">
-    <button class="dropdown-trigger" @click="toggleDropdown">
+  <div ref="dropdownRef" class="dropdown" :class="{ open: isOpen, disabled: disabled }">
+    <button class="dropdown-trigger" :disabled="disabled" @click="toggleDropdown">
       <span class="dropdown-value">{{ selectedLabel }}</span>
       <svg
         class="dropdown-arrow"
@@ -125,7 +129,12 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
-.dropdown-trigger:hover {
+.dropdown-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-trigger:hover:not(:disabled) {
   background: var(--hover-bg);
   border-color: color-mix(in srgb, var(--primary-color), black 15%);
 }

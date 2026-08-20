@@ -9,6 +9,7 @@ export interface DropdownProps {
   modelValue: string | number
   options: DropdownOption[]
   placeholder?: string
+  disabled?: boolean
 }
 
 export interface DropdownEmits {
