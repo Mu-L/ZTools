@@ -591,6 +591,8 @@ window.ztools = {
   showMainWindow: async () => {
     return await electron.ipcRenderer.invoke('show-main-window')
   },
+  // 拖动文件到外部
+  startDrag: (filePath) => electron.ipcRenderer.send('start-drag-file', filePath),
   // 隐藏主窗口
   hideMainWindow: async (isRestorePreWindow = true) => {
     return await electron.ipcRenderer.invoke('hide-main-window', isRestorePreWindow)
