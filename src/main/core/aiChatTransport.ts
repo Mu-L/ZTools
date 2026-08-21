@@ -1,4 +1,3 @@
-import OpenAI from 'openai'
 import {
   normalizeAiReasoningEffort,
   type AiReasoningCapability,
@@ -130,7 +129,7 @@ export interface AiChatProtocolTurn {
   usage?: AiTokenUsage
 }
 
-/** 非 Chat Completions 协议需要实现的最小流式契约。 */
+/** 三种 AI 协议适配器共同实现的最小流式契约。 */
 export interface AiChatProtocolStream {
   /**
    * 执行一次协议原生的流式请求。
@@ -163,62 +162,6 @@ const DEFAULT_RESPONSE_FIELDS = [
   'reasoning_text',
   'reasoning_details'
 ]
-
-/**
- * 将插件消息转换为 OpenAI SDK 消息，同时保留兼容供应商的推理字段。
- * @param messages 插件提交的完整协议消息
- * @returns OpenAI SDK 可接受的消息列表
- */
-export function convertAiChatMessages(
-  messages: AiChatMessage[]
-): OpenAI.ChatCompletionMessageParam[] {
-  return messages.map((message) => {
-    if (message.role === 'assistant') {
-      const converted: Record<string, unknown> = {
-        role: 'assistant',
-        content: typeof message.content === 'string' ? message.content : ''
-      }
-      if (message.reasoning_content) converted.reasoning_content = message.reasoning_content
-      if (message.tool_calls?.length) converted.tool_calls = message.tool_calls
-      return converted as unknown as OpenAI.ChatCompletionMessageParam
-    }
-    if (message.role === 'tool') {
-      return {
-        role: 'tool',
-        content: typeof message.content === 'string' ? message.content : '',
-        tool_call_id: message.tool_call_id || ''
-      }
-    }
-    if (message.role === 'user' && Array.isArray(message.content)) {
-      return {
-        role: 'user',
-        content: message.content as OpenAI.ChatCompletionContentPart[]
-      }
-    }
-    return {
-      role: message.role,
-      content: typeof message.content === 'string' ? message.content : ''
-    } as OpenAI.ChatCompletionMessageParam
-  })
-}
-
-/**
- * 将插件工具定义转换为 OpenAI SDK 工具定义。
- * @param tools 插件声明的函数工具
- * @returns 过滤无效项后的 SDK 工具定义
- */
-export function convertAiChatTools(tools: AiChatTool[] = []): OpenAI.ChatCompletionTool[] {
-  return tools
-    .filter((tool) => tool?.type === 'function' && tool.function?.name)
-    .map((tool) => ({
-      type: 'function',
-      function: {
-        name: tool.function!.name,
-        description: tool.function!.description,
-        parameters: tool.function!.parameters as OpenAI.FunctionParameters
-      }
-    }))
-}
 
 /**
  * 将模型推理配置映射为供应商请求字段和响应字段顺序。
@@ -379,145 +322,7 @@ export function normalizeAiChatFailure(error: unknown): AiChatFailure {
 }
 
 /**
- * 执行一次流式 Chat Completions 请求，不执行模型生成的工具。
- * @param client 已绑定供应商密钥和地址的 OpenAI 客户端
- * @param model 供应商接收的真实模型 ID
- * @param option 插件提交的单轮请求选项
- * @param signal 请求中止信号
- * @param onEvent 流式事件接收器
- * @returns 完整助手响应
- * @throws 提供商失败、流缺少结束标记或响应为空时抛出
- */
-export async function streamSingleAiChat(
-  client: OpenAI,
-  model: string,
-  option: AiChatOption,
-  signal: AbortSignal,
-  onEvent: (event: AiChatEvent) => void
-): Promise<AiChatResult> {
-  const tools = convertAiChatTools(option.tools)
-  const reasoning = resolveAiReasoningPolicy(
-    model,
-    option.modelReasoning,
-    option.reasoningEffort ?? option.reasoning?.effort
-  )
-  const request: Record<string, unknown> = {
-    model,
-    messages: convertAiChatMessages(option.messages),
-    stream: true,
-    stream_options: { include_usage: true },
-    temperature: Number.isFinite(Number(option.temperature)) ? Number(option.temperature) : 0.2,
-    ...reasoning.request
-  }
-  if (tools.length) {
-    request.tools = tools
-    request.tool_choice = option.toolChoice || 'auto'
-  }
-  if (Number(option.maxTokens) > 0) {
-    request.max_tokens = Math.min(32_768, Math.max(1, Math.round(Number(option.maxTokens))))
-  }
-
-  const stream = await client.chat.completions.create(
-    request as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
-    { signal }
-  )
-  let content = ''
-  let reasoningText = ''
-  let reasoningActive = false
-  let finishReason = ''
-  let usage: AiTokenUsage | undefined
-  const toolCalls: AiToolCall[] = []
-
-  /**
-   * 在正文、工具或流结束边界关闭活动思考段。
-   * @returns 本次是否发布了结束事件
-   */
-  const endReasoning = (): boolean => {
-    if (!reasoningActive) return false
-    reasoningActive = false
-    onEvent({ type: 'reasoning_end' })
-    return true
-  }
-
-  for await (const chunk of stream) {
-    const choice = chunk.choices[0]
-    const delta = choice?.delta as Record<string, unknown> | undefined
-    if (choice?.finish_reason) finishReason = choice.finish_reason
-    const chunkUsage = normalizeAiTokenUsage(chunk.usage)
-    if (delta) {
-      const reasoningDelta = extractAiReasoningDelta(delta, reasoning.responseFields)
-      if (reasoningDelta) {
-        reasoningActive = true
-        reasoningText += reasoningDelta
-        onEvent({ type: 'reasoning', delta: reasoningDelta })
-      }
-      const contentDelta = typeof delta.content === 'string' ? delta.content : ''
-      if (contentDelta) {
-        endReasoning()
-        content += contentDelta
-        onEvent({ type: 'content', delta: contentDelta })
-      }
-      const deltaToolCalls = Array.isArray(delta.tool_calls) ? delta.tool_calls : []
-      if (deltaToolCalls.length) endReasoning()
-      for (const part of deltaToolCalls as Array<Record<string, unknown>>) {
-        const index = Number(part.index) || 0
-        const fn = (part.function || {}) as Record<string, unknown>
-        const current = toolCalls[index] || {
-          id: '',
-          type: 'function' as const,
-          function: { name: '', arguments: '' }
-        }
-        if (typeof part.id === 'string' && part.id) current.id = part.id
-        if (typeof fn.name === 'string' && fn.name) current.function.name = fn.name
-        const argumentsDelta = typeof fn.arguments === 'string' ? fn.arguments : ''
-        current.function.arguments += argumentsDelta
-        toolCalls[index] = current
-        onEvent({
-          type: 'tool_call',
-          index,
-          id: current.id,
-          name: current.function.name,
-          argumentsDelta
-        })
-      }
-    }
-    // usage 表示本分片之前全部增量的统计结果，固定在正文和工具事件之后发布。
-    if (chunkUsage) {
-      usage = chunkUsage
-      onEvent({ type: 'usage', usage: chunkUsage })
-    }
-  }
-  endReasoning()
-
-  // 没有结束标记时禁止提交可能不完整的工具参数。
-  if (!finishReason) {
-    const error = new Error(
-      signal.aborted ? 'AI 请求已中止' : '模型流式响应未返回结束标记'
-    ) as Error & {
-      normalizedCode?: string
-    }
-    error.normalizedCode = signal.aborted ? 'ABORTED' : 'STREAM_CLOSED'
-    throw error
-  }
-  if (!content && !reasoningText && !toolCalls.filter(Boolean).length) {
-    const error = new Error('模型返回了不包含任何内容的完整响应') as Error & {
-      normalizedCode?: string
-    }
-    error.normalizedCode = 'EMPTY_RESPONSE'
-    throw error
-  }
-  return {
-    role: 'assistant',
-    content: content || null,
-    reasoning_content: reasoningText || null,
-    tool_calls: toolCalls.filter(Boolean),
-    finish_reason: finishReason,
-    usage
-  }
-}
-
-/**
- * 将 Responses 或 Anthropic 协议适配器桥接为插件侧统一的单轮流式事件。
+ * 将协议适配器桥接为插件侧统一的单轮流式事件。
  * @param adapter 已绑定供应商配置的协议适配器
  * @param model 供应商接收的真实模型 ID
  * @param option 插件提交的单轮请求选项

@@ -7,7 +7,11 @@ import type {
   AiChatTool,
   AiToolCall
 } from '../../../core/aiChatTransport.js'
-import { normalizeAiTokenUsage, resolveAiReasoningPolicy } from '../../../core/aiChatTransport.js'
+import {
+  extractAiReasoningDelta,
+  normalizeAiTokenUsage,
+  resolveAiReasoningPolicy
+} from '../../../core/aiChatTransport.js'
 import {
   ANTHROPIC_DEFAULT_MAX_TOKENS,
   fromAnthropicContent,
@@ -226,9 +230,8 @@ class OpenAiChatAdapter implements AiProtocolAdapter {
     const choice = response.choices[0]
     if (!choice) return { content: '', toolCalls: [] }
     const assistantMsg = choice.message
-    // 提取 reasoning_content（DeepSeek 等模型的非标准字段）。
-    const reasoningContent = (assistantMsg as unknown as Record<string, unknown>)
-      .reasoning_content as string | undefined
+    // 按模型配置提取供应商返回的非标准推理字段。
+    const reasoningContent = extractAiReasoningDelta(assistantMsg, reasoning.responseFields)
     return {
       content: assistantMsg.content || '',
       reasoningContent,
@@ -286,8 +289,7 @@ class OpenAiChatAdapter implements AiProtocolAdapter {
       }
       const chunkUsage = normalizeAiTokenUsage(chunk.usage)
       if (delta) {
-        const deltaAny = delta as Record<string, unknown>
-        const reasoningDelta = deltaAny.reasoning_content as string | undefined
+        const reasoningDelta = extractAiReasoningDelta(delta, reasoning.responseFields)
         const contentDelta = delta.content || ''
 
         if (contentDelta || reasoningDelta) {
