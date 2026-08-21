@@ -273,7 +273,13 @@ pnpm build:unpack       # 打包但不生成安装包（调试用）
 
 ## ⭐ Star 历史
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.dera.page/#lzx8589561/ZTools&Date)
+<a href="https://www.star-history.com/?repos=lzx8589561%2FZTools%2CZT+o+o+l+s%2FZT+o+o+l+s%2CZToolsCenter%2FZTools&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=lzx8589561/ZTools%2CZT o o l s/ZT o o l s%2CZToolsCenter/ZTools&type=date&theme=dark&legend=top-left&sealed_token=8lwZs-1zJ6pF0LHgiIcQXna7H9Bs2glgI5AFB360X1hZgyZRlaTNTDMxhxfB6Vzsb7dYXVq9EP0McDNxUTk4hC4IRQRjBgKiDrcCVWFVykNy_y4x4Zi4DQ" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=lzx8589561/ZTools%2CZT o o l s/ZT o o l s%2CZToolsCenter/ZTools&type=date&legend=top-left&sealed_token=8lwZs-1zJ6pF0LHgiIcQXna7H9Bs2glgI5AFB360X1hZgyZRlaTNTDMxhxfB6Vzsb7dYXVq9EP0McDNxUTk4hC4IRQRjBgKiDrcCVWFVykNy_y4x4Zi4DQ" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=lzx8589561/ZTools%2CZT o o l s/ZT o o l s%2CZToolsCenter/ZTools&type=date&legend=top-left&sealed_token=8lwZs-1zJ6pF0LHgiIcQXna7H9Bs2glgI5AFB360X1hZgyZRlaTNTDMxhxfB6Vzsb7dYXVq9EP0McDNxUTk4hC4IRQRjBgKiDrcCVWFVykNy_y4x4Zi4DQ" />
+ </picture>
+</a>
 
 ---
 
