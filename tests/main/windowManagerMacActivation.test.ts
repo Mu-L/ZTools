@@ -4,12 +4,8 @@ type MockHandler = (...args: any[]) => void
 
 const mocks = vi.hoisted(() => {
   const appFocus = vi.fn()
-  const appHide = vi.fn()
-  const appShow = vi.fn()
-  const appIsHidden = vi.fn(() => false)
   const dbGet = vi.fn()
   const clipboardGetCurrentWindow = vi.fn()
-  const clipboardActivateApp = vi.fn()
   const globalInputOn = vi.fn()
   const globalInputAcquire = vi.fn()
   const globalInputRelease = vi.fn()
@@ -46,7 +42,6 @@ const mocks = vi.hoisted(() => {
       show: vi.fn(() => emit('show')),
       emit,
       hide: vi.fn(),
-      minimize: vi.fn(),
       blur: vi.fn(),
       focus: vi.fn(),
       loadFile: vi.fn(),
@@ -65,12 +60,8 @@ const mocks = vi.hoisted(() => {
 
   return {
     appFocus,
-    appHide,
-    appShow,
-    appIsHidden,
     dbGet,
     clipboardGetCurrentWindow,
-    clipboardActivateApp,
     globalInputOn,
     globalInputAcquire,
     globalInputRelease,
@@ -88,9 +79,6 @@ vi.mock('electron', () => ({
   app: {
     getAppPath: vi.fn(() => '/tmp/ztools'),
     focus: mocks.appFocus,
-    hide: mocks.appHide,
-    show: mocks.appShow,
-    isHidden: mocks.appIsHidden,
     dock: {
       show: vi.fn(),
       hide: vi.fn()
@@ -166,8 +154,7 @@ vi.mock('../../src/main/core/native/index.js', () => ({
 
 vi.mock('../../src/main/managers/clipboardManager', () => ({
   default: {
-    getCurrentWindow: mocks.clipboardGetCurrentWindow,
-    activateApp: mocks.clipboardActivateApp
+    getCurrentWindow: mocks.clipboardGetCurrentWindow
   }
 }))
 
@@ -207,8 +194,6 @@ describe('windowManager macOS activation', () => {
     vi.clearAllMocks()
     mocks.dbGet.mockReturnValue(null)
     mocks.clipboardGetCurrentWindow.mockReturnValue(null)
-    mocks.clipboardActivateApp.mockReturnValue(true)
-    mocks.appIsHidden.mockReturnValue(false)
     mocks.latestWindow.current = null
   })
 
@@ -241,61 +226,5 @@ describe('windowManager macOS activation', () => {
     vi.advanceTimersByTime(201)
     mocks.latestWindow.current.emit('blur')
     expect(mocks.latestWindow.current.hide).toHaveBeenCalledTimes(1)
-  })
-
-  it('restore-focus hide on macOS uses app.hide, not window hide or activateApp', async () => {
-    const { default: windowManager } = await import('../../src/main/managers/windowManager')
-
-    windowManager.createWindow()
-    windowManager.setPreviousActiveWindow({
-      app: 'Finder',
-      bundleId: 'com.apple.finder'
-    } as any)
-
-    windowManager.hideWindow(true)
-
-    expect(mocks.appHide).toHaveBeenCalledTimes(1)
-    expect(mocks.latestWindow.current.hide).not.toHaveBeenCalled()
-    expect(mocks.latestWindow.current.minimize).not.toHaveBeenCalled()
-    expect(mocks.clipboardActivateApp).not.toHaveBeenCalled()
-  })
-
-  it('blur hide on macOS still only hides the BrowserWindow', async () => {
-    const { default: windowManager } = await import('../../src/main/managers/windowManager')
-
-    windowManager.createWindow()
-    windowManager.setPreviousActiveWindow({
-      app: 'Finder',
-      bundleId: 'com.apple.finder'
-    } as any)
-
-    windowManager.hideWindow(false)
-
-    expect(mocks.appHide).not.toHaveBeenCalled()
-    expect(mocks.latestWindow.current.hide).toHaveBeenCalledTimes(1)
-    expect(mocks.clipboardActivateApp).not.toHaveBeenCalled()
-  })
-
-  it('after app.hide, showWindow unhides via app.show', async () => {
-    mocks.appIsHidden.mockReturnValue(true)
-    const { default: windowManager } = await import('../../src/main/managers/windowManager')
-
-    windowManager.createWindow()
-    windowManager.hideWindow(true)
-    expect(mocks.appHide).toHaveBeenCalledTimes(1)
-
-    windowManager.showWindow()
-    expect(mocks.appShow).toHaveBeenCalledTimes(1)
-  })
-
-  it('showWindow does not call app.show when the app is not hidden', async () => {
-    mocks.appIsHidden.mockReturnValue(false)
-    const { default: windowManager } = await import('../../src/main/managers/windowManager')
-
-    windowManager.createWindow()
-    windowManager.showWindow()
-
-    expect(mocks.appShow).not.toHaveBeenCalled()
-    expect(mocks.appFocus).not.toHaveBeenCalled()
   })
 })

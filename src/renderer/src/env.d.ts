@@ -84,7 +84,7 @@ declare global {
         confirmDialog?: any // 确认对话框配置
       }) => Promise<any>
       launchAsAdmin: (appPath: string, name?: string) => Promise<void>
-      hideWindow: (skipAutoBackToSearch?: boolean) => void
+      hideWindow: () => void
       resizeWindow: (height: number) => void
       updateLaunchContext: (context: {
         searchQuery: string

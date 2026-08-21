@@ -70,12 +70,6 @@ export class PluginUIAPI {
         return
       }
 
-      // 开：直接藏窗回上一应用，不走 hidePluginView / notifyBackToSearch
-      if (settings.escHideWindow) {
-        windowManager.hideWindow(true, true)
-        return
-      }
-
       if (this.pluginManager && typeof this.pluginManager.handlePluginEsc === 'function') {
         this.pluginManager.handlePluginEsc()
       }
