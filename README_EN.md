@@ -261,7 +261,7 @@ This project is licensed under the [MIT License](./LICENSE).
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.com/#lzx8589561/ZTools&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.dera.page/#lzx8589561/ZTools&Date)
 
 ---
 
