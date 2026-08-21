@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { BaseDialog, DetailPanel } from '@/components'
-import type {
-  AiProvider,
-  AiProviderInput,
-  AiProviderModelInput,
-  AiRemoteModel
+import { BaseDialog, DetailPanel, Select, type SelectModelValue } from '@/components'
+import {
+  AI_API_FORMAT_OPTIONS,
+  DEFAULT_AI_API_FORMAT,
+  type AiApiFormat,
+  normalizeAiApiFormat,
+  type AiProvider,
+  type AiProviderInput,
+  type AiProviderModelInput,
+  type AiRemoteModel
 } from '@shared/aiProviderShared'
 
 interface Props {
@@ -32,7 +36,20 @@ const showModelDialog = ref(false)
 const formData = ref({
   name: '',
   apiUrl: '',
-  apiKey: ''
+  apiKey: '',
+  apiFormat: DEFAULT_AI_API_FORMAT as AiApiFormat
+})
+
+/**
+ * Select 的 v-model 代理：Select 发出的值类型宽于窄字面量 AiApiFormat，
+ * 经 normalizeAiApiFormat 归一化后写回表单，保证类型与取值合法。
+ * @returns 可读写的 AiApiFormat 代理
+ */
+const apiFormatProxy = computed<SelectModelValue>({
+  get: () => formData.value.apiFormat,
+  set: (value) => {
+    formData.value.apiFormat = normalizeAiApiFormat(value)
+  }
 })
 
 const filteredSelectedModelIds = computed(() => {
@@ -57,7 +74,8 @@ function resetEditor(provider: AiProvider | null): void {
   formData.value = {
     name: provider?.name || '',
     apiUrl: provider?.apiUrl || '',
-    apiKey: provider?.apiKey || ''
+    apiKey: provider?.apiKey || '',
+    apiFormat: provider?.apiFormat ?? DEFAULT_AI_API_FORMAT
   }
   fetchedModels.value = []
   selectedModelIds.value = new Set(provider?.selectedModels.map((model) => model.modelId) || [])
@@ -176,6 +194,7 @@ function handleSave(): void {
     name: formData.value.name,
     apiUrl: formData.value.apiUrl,
     apiKey: formData.value.apiKey,
+    apiFormat: formData.value.apiFormat,
     selectedModels
   })
 }
@@ -192,6 +211,17 @@ function handleSave(): void {
           </div>
 
           <div class="form-group">
+            <label class="form-label">API 格式 *</label>
+            <Select
+              v-model="apiFormatProxy"
+              :options="AI_API_FORMAT_OPTIONS"
+              size="medium"
+              placeholder="选择 API 格式"
+              style="width: 100%"
+            />
+          </div>
+
+          <div class="form-group full-width-field">
             <label class="form-label">API 地址 *</label>
             <input
               v-model="formData.apiUrl"
@@ -201,7 +231,7 @@ function handleSave(): void {
             />
           </div>
 
-          <div class="form-group">
+          <div class="form-group full-width-field">
             <label class="form-label">API 密钥 *</label>
             <div class="input-wrapper">
               <input
@@ -404,7 +434,7 @@ function handleSave(): void {
   gap: 18px;
 }
 
-.connection-fields .form-group:last-child {
+.full-width-field {
   grid-column: 1 / -1;
 }
 
@@ -637,7 +667,7 @@ function handleSave(): void {
     grid-template-columns: 1fr;
   }
 
-  .connection-fields .form-group:last-child {
+  .connection-fields .full-width-field {
     grid-column: auto;
   }
 

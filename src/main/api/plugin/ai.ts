@@ -1,9 +1,9 @@
 import { ipcMain } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
-import OpenAI from 'openai'
 import detachedWindowManager from '../../core/detachedWindowManager'
 import aiProviderService, { type ResolvedAiModel } from '../../core/aiProviderService.js'
-import type { AiModelChoice, AiProvider } from '../../../shared/aiProviderShared.js'
+import { createAdapter } from './aiProtocol/adapters'
+import type { AiModelChoice } from '../../../shared/aiProviderShared.js'
 
 /**
  * AI 选项
@@ -206,70 +206,6 @@ class PluginAiAPI {
     return aiProviderService.resolveModel(modelRef)
   }
 
-  /**
-   * 使用供应商凭据创建 OpenAI 兼容客户端。
-   * @param provider 已解析的供应商连接配置
-   * @returns OpenAI SDK 客户端
-   */
-  private createClient(provider: AiProvider): OpenAI {
-    return new OpenAI({
-      apiKey: provider.apiKey,
-      baseURL: provider.apiUrl
-    })
-  }
-  /**
-   * 将 Message[] 转为 OpenAI SDK 格式
-   * 关键：保留 assistant 消息的 reasoning_content，解决 DeepSeek thinking mode 报错
-   */
-  private convertMessages(messages: Message[]): OpenAI.ChatCompletionMessageParam[] {
-    return messages.map((msg) => {
-      if (msg.role === 'assistant') {
-        const assistantMsg: Record<string, unknown> = {
-          role: 'assistant',
-          content: msg.content || ''
-        }
-        if (msg.reasoning_content) {
-          assistantMsg.reasoning_content = msg.reasoning_content
-        }
-        if (msg.tool_calls?.length) {
-          assistantMsg.tool_calls = msg.tool_calls
-        }
-        return assistantMsg as unknown as OpenAI.ChatCompletionMessageParam
-      }
-      if (msg.role === 'tool') {
-        return {
-          role: 'tool' as const,
-          content: (typeof msg.content === 'string' ? msg.content : '') || '',
-          tool_call_id: msg.tool_call_id || ''
-        }
-      }
-      // user 消息：支持字符串或内容块数组（多模态）
-      if (msg.role === 'user' && Array.isArray(msg.content)) {
-        return {
-          role: 'user' as const,
-          content: msg.content as OpenAI.ChatCompletionContentPart[]
-        }
-      }
-      return {
-        role: msg.role as 'system' | 'user',
-        content: (typeof msg.content === 'string' ? msg.content : '') || ''
-      }
-    })
-  }
-
-  private convertTools(tools: Tool[]): OpenAI.ChatCompletionTool[] {
-    return tools
-      .filter((t) => t.function)
-      .map((t) => ({
-        type: 'function' as const,
-        function: {
-          name: t.function!.name,
-          description: t.function!.description,
-          parameters: t.function!.parameters as OpenAI.FunctionParameters
-        }
-      }))
-  }
-
   private async executeToolCall(
     toolCall: { id: string; function: { name: string; arguments: string } },
     webContents: Electron.WebContents
@@ -317,68 +253,43 @@ class PluginAiAPI {
 
     try {
       this.notifyAiStatus('sending', webContents)
-      const client = this.createClient(resolvedModel.provider)
-      const openaiTools = option.tools?.length ? this.convertTools(option.tools) : undefined
+      // 按供应商配置的接口格式选择适配器，统一工具调用循环。
+      const adapter = createAdapter(resolvedModel.provider)
+      const tools = option.tools?.length ? option.tools : undefined
       const messages = [...option.messages]
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         this.notifyAiStatus(round === 0 ? 'sending' : 'receiving', webContents)
 
-        const response = await client.chat.completions.create(
-          {
-            model: resolvedModel.model.modelId,
-            messages: this.convertMessages(messages),
-            ...(openaiTools?.length ? { tools: openaiTools } : {})
-          },
-          { signal: abortController.signal }
+        const turn = await adapter.complete(
+          { model: resolvedModel.model.modelId, messages, tools },
+          abortController.signal
         )
 
-        const choice = response.choices[0]
-        if (!choice) {
-          this.notifyAiStatus('idle', webContents)
-          return { success: true, data: { role: 'assistant', content: '' } }
-        }
-
-        const assistantMsg = choice.message
-        // 提取 reasoning_content（DeepSeek 等模型的非标准字段）
-        const reasoningContent = (assistantMsg as unknown as Record<string, unknown>)
-          .reasoning_content as string | undefined
-
-        // 没有工具调用，直接返回结果
-        if (!assistantMsg.tool_calls?.length) {
+        // 没有工具调用，直接返回结果。
+        if (turn.toolCalls.length === 0) {
           this.notifyAiStatus('idle', webContents)
           return {
             success: true,
             data: {
               role: 'assistant',
-              content: assistantMsg.content || '',
-              reasoning_content: reasoningContent
+              content: turn.content,
+              reasoning_content: turn.reasoningContent
             }
           }
         }
-        // 有工具调用：提取 function 类型的工具调用
-        const fnToolCalls = assistantMsg.tool_calls
-          .filter(
-            (tc): tc is OpenAI.ChatCompletionMessageToolCall & { type: 'function' } =>
-              tc.type === 'function'
-          )
-          .map((tc) => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: { name: tc.function.name, arguments: tc.function.arguments }
-          }))
 
+        // 记录助手回复（含 reasoning_content 与工具调用）后执行工具。
         messages.push({
           role: 'assistant',
-          content: assistantMsg.content || '',
-          reasoning_content: reasoningContent,
-          tool_calls: fnToolCalls
+          content: turn.content,
+          reasoning_content: turn.reasoningContent,
+          tool_calls: turn.toolCalls
         })
 
-        // 执行所有工具调用并追加结果
-        for (const tc of fnToolCalls) {
-          const result = await this.executeToolCall(tc, webContents)
-          messages.push({ role: 'tool', content: result, tool_call_id: tc.id })
+        for (const toolCall of turn.toolCalls) {
+          const result = await this.executeToolCall(toolCall, webContents)
+          messages.push({ role: 'tool', content: result, tool_call_id: toolCall.id })
         }
       }
 
@@ -421,88 +332,49 @@ class PluginAiAPI {
 
     try {
       this.notifyAiStatus('sending', webContents)
-      const client = this.createClient(resolvedModel.provider)
-      const openaiTools = option.tools?.length ? this.convertTools(option.tools) : undefined
+      // 按供应商配置的接口格式选择适配器，统一工具调用循环。
+      const adapter = createAdapter(resolvedModel.provider)
+      const tools = option.tools?.length ? option.tools : undefined
       const messages = [...option.messages]
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         this.notifyAiStatus(round === 0 ? 'sending' : 'receiving', webContents)
 
-        const stream = await client.chat.completions.create(
-          {
-            model: resolvedModel.model.modelId,
-            messages: this.convertMessages(messages),
-            stream: true,
-            ...(openaiTools?.length ? { tools: openaiTools } : {})
-          },
-          { signal: abortController.signal }
-        )
-
-        let fullContent = ''
-        let fullReasoning = ''
-        const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
-
-        this.notifyAiStatus('receiving', webContents)
-
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta
-          if (!delta) continue
-          // 处理 reasoning_content（DeepSeek thinking mode 流式片段）
-          const deltaAny = delta as Record<string, unknown>
-          const reasoningDelta = deltaAny.reasoning_content as string | undefined
-
-          // 处理文本内容
-          const contentDelta = delta.content || ''
-
-          if (contentDelta || reasoningDelta) {
-            fullContent += contentDelta
-            fullReasoning += reasoningDelta || ''
+        // 首个增量到达时切换为接收状态，与既有 UX 保持一致。
+        let receivingNotified = false
+        const turn = await adapter.stream(
+          { model: resolvedModel.model.modelId, messages, tools },
+          abortController.signal,
+          (delta) => {
+            if (!receivingNotified) {
+              receivingNotified = true
+              this.notifyAiStatus('receiving', webContents)
+            }
             onChunk({
               role: 'assistant',
-              content: contentDelta,
-              reasoning_content: reasoningDelta
+              content: delta.content ?? '',
+              reasoning_content: delta.reasoningContent
             })
           }
+        )
 
-          // 累积工具调用片段
-          if (delta.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              const existing = toolCalls.get(tc.index)
-              if (existing) {
-                existing.arguments += tc.function?.arguments || ''
-              } else {
-                toolCalls.set(tc.index, {
-                  id: tc.id || '',
-                  name: tc.function?.name || '',
-                  arguments: tc.function?.arguments || ''
-                })
-              }
-            }
-          }
-        }
-
-        // 流结束，检查是否有工具调用
-        if (toolCalls.size === 0) {
+        // 流结束且无工具调用，本轮直接结束。
+        if (turn.toolCalls.length === 0) {
           this.notifyAiStatus('idle', webContents)
           return
         }
-        // 有工具调用：将 assistant 消息（含 reasoning_content）加入历史
-        const tcArray = Array.from(toolCalls.values()).map((tc) => ({
-          id: tc.id,
-          type: 'function' as const,
-          function: { name: tc.name, arguments: tc.arguments }
-        }))
+
+        // 将助手回复（含 reasoning_content）加入历史后执行工具调用。
         messages.push({
           role: 'assistant',
-          content: fullContent,
-          reasoning_content: fullReasoning || undefined,
-          tool_calls: tcArray
+          content: turn.content,
+          reasoning_content: turn.reasoningContent,
+          tool_calls: turn.toolCalls
         })
 
-        // 执行所有工具调用并追加结果
-        for (const tc of tcArray) {
-          const result = await this.executeToolCall(tc, webContents)
-          messages.push({ role: 'tool', content: result, tool_call_id: tc.id })
+        for (const toolCall of turn.toolCalls) {
+          const result = await this.executeToolCall(toolCall, webContents)
+          messages.push({ role: 'tool', content: result, tool_call_id: toolCall.id })
         }
       }
 

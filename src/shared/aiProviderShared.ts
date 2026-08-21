@@ -1,6 +1,19 @@
 /** AI 供应商配置的当前存储版本。 */
 export const AI_PROVIDER_STORE_VERSION = 2 as const
 
+/** AI 供应商采用的接口协议格式。 */
+export type AiApiFormat = 'openai-chat' | 'anthropic-messages' | 'openai-responses'
+
+/** 新增或历史数据缺失时使用的默认接口格式。 */
+export const DEFAULT_AI_API_FORMAT: AiApiFormat = 'openai-chat'
+
+/** 供应商接口格式选项，供设置界面复用。 */
+export const AI_API_FORMAT_OPTIONS: ReadonlyArray<{ value: AiApiFormat; label: string }> = [
+  { value: 'openai-chat', label: 'OpenAI Chat Completions' },
+  { value: 'anthropic-messages', label: 'Anthropic Messages' },
+  { value: 'openai-responses', label: 'OpenAI Responses API' }
+]
+
 /** 旧版按单个模型保存的配置。 */
 export interface LegacyAiModel {
   id: string
@@ -31,6 +44,8 @@ export interface AiProvider {
   name: string
   apiUrl: string
   apiKey: string
+  /** 供应商采用的接口格式。 */
+  apiFormat: AiApiFormat
   /** 是否允许插件发现和调用该供应商的模型。 */
   enabled: boolean
   selectedModels: AiProviderModel[]
@@ -56,6 +71,8 @@ export interface AiProviderInput {
   name: string
   apiUrl: string
   apiKey: string
+  /** 供应商采用的接口格式；缺省时回退到默认格式。 */
+  apiFormat?: AiApiFormat
   selectedModels: AiProviderModelInput[]
 }
 
@@ -105,4 +122,16 @@ export function isAiProviderStore(value: unknown): value is AiProviderStore {
  */
 export function normalizeAiApiUrl(apiUrl: string): string {
   return apiUrl.trim().replace(/\/+$/, '')
+}
+
+/**
+ * 将任意值归一化为合法的接口格式，非法或缺失时回退到默认格式。
+ * @param value 待归一化的接口格式
+ * @returns 合法的接口格式
+ */
+export function normalizeAiApiFormat(value: unknown): AiApiFormat {
+  for (const option of AI_API_FORMAT_OPTIONS) {
+    if (value === option.value) return option.value
+  }
+  return DEFAULT_AI_API_FORMAT
 }

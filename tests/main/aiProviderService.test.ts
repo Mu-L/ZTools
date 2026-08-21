@@ -71,6 +71,7 @@ describe('aiProviderService', () => {
       'gpt-4o',
       'gpt-4o-mini'
     ])
+    expect(migrated.providers.every((provider) => provider.apiFormat === 'openai-chat')).toBe(true)
     expect('defaultModelRef' in migrated).toBe(false)
   })
 
@@ -226,6 +227,7 @@ describe('aiProviderService', () => {
     ])
     expect(stored.providers[1].selectedModels[0].aliases).toEqual(['中转站 - model-a'])
     expect(stored.providers.every((provider) => provider.enabled)).toBe(true)
+    expect(stored.providers.every((provider) => provider.apiFormat === 'openai-chat')).toBe(true)
     expect('defaultModelRef' in stored).toBe(false)
     expect('label' in stored.providers[0].selectedModels[0]).toBe(false)
     expect('label' in stored.providers[1].selectedModels[0]).toBe(false)
@@ -240,5 +242,64 @@ describe('aiProviderService', () => {
     await expect(
       aiProviderService.fetchRemoteModels('https://example.com/v1/', 'secret')
     ).resolves.toEqual([{ id: 'model-a' }, { id: 'model-z' }])
+  })
+
+  it('persists the api format and defaults legacy values to OpenAI Chat Completions', () => {
+    // 未指定接口格式的新建供应商回退为默认格式。
+    expect(
+      aiProviderService.addProvider({
+        name: '默认供应商',
+        apiUrl: 'https://one.example/v1',
+        apiKey: 'key-one',
+        selectedModels: [{ modelId: 'model-a' }]
+      }).success
+    ).toBe(true)
+    expect(stored!.providers[0].apiFormat).toBe('openai-chat')
+
+    // 显式指定 Anthropic Messages 的供应商原样保存。
+    expect(
+      aiProviderService.addProvider({
+        name: 'Anthropic 供应商',
+        apiUrl: 'https://two.example/v1',
+        apiKey: 'key-two',
+        apiFormat: 'anthropic-messages',
+        selectedModels: [{ modelId: 'model-a' }]
+      }).success
+    ).toBe(true)
+    expect(stored!.providers[1].apiFormat).toBe('anthropic-messages')
+
+    // 更新时可以切换为 OpenAI Responses API。
+    const provider = stored!.providers[1]
+    expect(
+      aiProviderService.updateProvider({
+        id: provider.id,
+        name: provider.name,
+        apiUrl: provider.apiUrl,
+        apiKey: provider.apiKey,
+        apiFormat: 'openai-responses',
+        selectedModels: [{ modelId: 'model-a' }]
+      }).success
+    ).toBe(true)
+    expect(stored!.providers[1].apiFormat).toBe('openai-responses')
+
+    // 历史供应商保存了非法接口格式时，读取时回退为默认的 OpenAI Chat Completions。
+    stored = {
+      version: 2,
+      providers: [
+        {
+          id: provider.id,
+          name: provider.name,
+          apiUrl: provider.apiUrl,
+          apiKey: provider.apiKey,
+          apiFormat: 'bogus-format',
+          enabled: true,
+          selectedModels: [{ ref: 'ref-a', modelId: 'model-a' }]
+        }
+      ]
+    } as AiProviderStore
+
+    expect(aiProviderService.getModelChoices()[0].value).toBe('ref-a')
+    expect(stored!.providers[0].apiFormat).toBe('openai-chat')
+    expect(mockDbPut).toHaveBeenCalled()
   })
 })
