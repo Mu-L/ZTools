@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   registerShortcut: vi.fn(),
   unregisterShortcut: vi.fn(),
   stopListener: vi.fn(),
-  prepareGlobalShortcut: vi.fn()
+  prepareGlobalShortcut: vi.fn(),
+  captureCurrentActiveWindow: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -48,7 +49,9 @@ vi.mock('../../src/main/core/doubleTapManager.js', () => ({
 }))
 
 vi.mock('../../src/main/managers/proxyManager.js', () => ({ default: {} }))
-vi.mock('../../src/main/managers/windowManager.js', () => ({ default: {} }))
+vi.mock('../../src/main/managers/windowManager.js', () => ({
+  default: { captureCurrentActiveWindow: mocks.captureCurrentActiveWindow }
+}))
 vi.mock('../../src/main/core/screenCapture.js', () => ({ primeScreenCaptureFrame: vi.fn() }))
 vi.mock('../../src/main/api/shared/database.js', () => ({
   default: { dbGet: vi.fn(), dbPut: vi.fn() }
@@ -83,5 +86,22 @@ describe('SettingsAPI optimized shortcut fallback', () => {
     expect(mocks.unregisterShortcut).toHaveBeenCalledWith('Alt+F')
     expect(mocks.stopListener).toHaveBeenCalledOnce()
     expect(mocks.electronRegister).toHaveBeenCalledWith('Alt+F', expect.any(Function))
+  })
+
+  it('captures the active window before handling a global shortcut', async () => {
+    const settings = new SettingsAPI()
+    const handler = vi.fn()
+    settings.setGlobalShortcutHandler(handler)
+
+    await settings.registerGlobalShortcut('Alt+F', 'demo/action', false, false)
+    const shortcutHandler = mocks.electronRegister.mock.calls.at(-1)?.[1]
+
+    shortcutHandler()
+    await vi.waitFor(() => expect(handler).toHaveBeenCalledWith('demo/action', undefined))
+
+    expect(mocks.captureCurrentActiveWindow).toHaveBeenCalledOnce()
+    expect(mocks.captureCurrentActiveWindow.mock.invocationCallOrder[0]).toBeLessThan(
+      handler.mock.invocationCallOrder[0]
+    )
   })
 })

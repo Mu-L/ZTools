@@ -7,7 +7,9 @@ import {
   DEFAULT_AI_API_FORMAT,
   isAiProviderStore,
   normalizeAiApiFormat,
+  normalizeAiModelCapabilities,
   normalizeAiApiUrl,
+  toAiModelReasoningInfo,
   type AiModelChoice,
   type AiProvider,
   type AiProviderInput,
@@ -302,17 +304,25 @@ class AiProviderService {
     return store.providers
       .filter((provider) => provider.enabled)
       .flatMap((provider) =>
-        provider.selectedModels.map((model) => ({
-          id: buildAiModelPublicId(provider.name, model.modelId),
-          value: model.ref,
-          label: buildAiModelPublicId(provider.name, model.modelId),
-          providerId: provider.id,
-          providerLabel: provider.name,
-          modelId: model.modelId,
-          description: model.description || '',
-          icon: model.icon || '',
-          cost: model.cost || 0
-        }))
+        provider.selectedModels.map((model) => {
+          const capabilities = normalizeAiModelCapabilities(model)
+          const reasoning = toAiModelReasoningInfo(capabilities.reasoning)
+          return {
+            id: buildAiModelPublicId(provider.name, model.modelId),
+            value: model.ref,
+            label: buildAiModelPublicId(provider.name, model.modelId),
+            providerId: provider.id,
+            providerLabel: provider.name,
+            modelId: model.modelId,
+            description: model.description || '',
+            icon: model.icon || '',
+            cost: model.cost || 0,
+            contextWindow: capabilities.contextWindow,
+            inputModalities: [...capabilities.inputModalities],
+            // 协议映射由宿主持有，插件只获得当前模型可选择的标准档位。
+            ...(reasoning === undefined ? {} : { reasoning })
+          }
+        })
       )
   }
 
@@ -406,13 +416,20 @@ class AiProviderService {
       seen.add(modelId)
 
       const previous = previousByModelId.get(modelId)
+      const merged = { ...previous, ...candidate }
+      if (!Object.prototype.hasOwnProperty.call(candidate, 'reasoning')) {
+        // 完整模型表单省略字段仍兼容为恢复默认；显式 null 会由能力规范化统一清除。
+        delete merged.reasoning
+      }
+      const capabilities = normalizeAiModelCapabilities(merged)
       selectedModels.push({
         ref: previous?.ref || randomUUID(),
         aliases: previous?.aliases ? [...previous.aliases] : undefined,
         modelId,
         description: candidate.description ?? previous?.description,
         icon: candidate.icon ?? previous?.icon,
-        cost: candidate.cost ?? previous?.cost
+        cost: candidate.cost ?? previous?.cost,
+        ...capabilities
       })
     }
     return selectedModels
@@ -484,6 +501,20 @@ class AiProviderService {
         if (!('label' in legacyModel)) continue
         delete legacyModel.label
         changed = true
+      }
+
+      // 能力元数据只规范化已经声明的字段，未知推理能力保持缺省而不猜测 high。
+      for (const model of provider.selectedModels) {
+        const capabilities = normalizeAiModelCapabilities(model)
+        if (
+          model.contextWindow !== capabilities.contextWindow ||
+          JSON.stringify(model.inputModalities) !== JSON.stringify(capabilities.inputModalities) ||
+          JSON.stringify(model.reasoning) !== JSON.stringify(capabilities.reasoning)
+        ) {
+          Object.assign(model, capabilities)
+          if (capabilities.reasoning === undefined) delete model.reasoning
+          changed = true
+        }
       }
 
       if (provider.name === nextName) continue

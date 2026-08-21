@@ -134,7 +134,9 @@ describe('aiProviderService', () => {
     expect(aiProviderService.getModelChoices()[0]).toMatchObject({
       id: '新名称 - model-a',
       value: originalRef,
-      label: '新名称 - model-a'
+      label: '新名称 - model-a',
+      contextWindow: 262_144,
+      inputModalities: ['text']
     })
     expect(aiProviderService.resolveModel(oldPublicId)?.provider.name).toBe('新名称')
     expect(aiProviderService.resolveModel(originalRef)?.provider.name).toBe('新名称')
@@ -178,6 +180,93 @@ describe('aiProviderService', () => {
     expect(aiProviderService.setProviderEnabled(secondProvider.id, false).success).toBe(true)
     expect(aiProviderService.getModelChoices()).toEqual([])
     expect(aiProviderService.resolveModel()).toBeNull()
+  })
+
+  it('normalizes supported reasoning efforts and returns an isolated list to plugins', () => {
+    aiProviderService.addProvider({
+      name: '推理供应商',
+      apiUrl: 'https://reasoning.example/v1',
+      apiKey: 'secret',
+      selectedModels: [
+        {
+          modelId: 'reasoning-model',
+          reasoning: {
+            protocol: 'openai-compatible',
+            efforts: { max: 'ultra', low: 'low', medium: 'medium' },
+            defaultEffort: 'medium',
+            responseField: 'auto'
+          }
+        }
+      ]
+    })
+
+    const firstChoice = aiProviderService.getModelChoices()[0]
+    expect(firstChoice.reasoning).toEqual({
+      efforts: [
+        { id: 'low', label: '低' },
+        { id: 'medium', label: '中' },
+        { id: 'max', label: '最高' }
+      ],
+      defaultEffort: 'medium'
+    })
+
+    // 插件修改返回值不得污染宿主持久化配置或后续查询。
+    firstChoice.reasoning!.efforts.push({ id: 'xhigh', label: '极高' })
+    expect(aiProviderService.getModelChoices()[0].reasoning?.efforts).toEqual([
+      { id: 'low', label: '低' },
+      { id: 'medium', label: '中' },
+      { id: 'max', label: '最高' }
+    ])
+  })
+
+  it('does not expose a selector for unknown or explicitly unsupported reasoning', () => {
+    aiProviderService.addProvider({
+      name: '能力三态供应商',
+      apiUrl: 'https://tri-state.example/v1',
+      apiKey: 'secret',
+      selectedModels: [
+        { modelId: 'unknown-model' },
+        { modelId: 'unsupported-model', reasoning: false }
+      ]
+    })
+
+    const choices = aiProviderService.getModelChoices()
+    expect(choices).toHaveLength(2)
+    expect(choices[0]).not.toHaveProperty('reasoning')
+    expect(choices[1]).not.toHaveProperty('reasoning')
+    expect(stored!.providers[0].selectedModels[1].reasoning).toBe(false)
+  })
+
+  it('clears an existing reasoning capability through the explicit null marker', () => {
+    aiProviderService.addProvider({
+      name: '可清除推理供应商',
+      apiUrl: 'https://clear-reasoning.example/v1',
+      apiKey: 'secret',
+      selectedModels: [
+        {
+          modelId: 'reasoning-model',
+          reasoning: {
+            protocol: 'openai-compatible',
+            efforts: { high: 'high' },
+            defaultEffort: 'high',
+            responseField: 'auto'
+          }
+        }
+      ]
+    })
+    const provider = stored!.providers[0]
+
+    const result = aiProviderService.updateProvider({
+      id: provider.id,
+      name: provider.name,
+      apiUrl: provider.apiUrl,
+      apiKey: provider.apiKey,
+      selectedModels: [{ modelId: 'reasoning-model', reasoning: null }]
+    })
+
+    expect(result.success).toBe(true)
+    expect(stored!.providers[0].selectedModels[0]).not.toHaveProperty('reasoning')
+    expect(aiProviderService.getModelChoices()[0]).not.toHaveProperty('reasoning')
   })
 
   it('rejects duplicate provider names that would create ambiguous public ids', () => {

@@ -1,11 +1,14 @@
-import type { ContentPart, Message, Tool, ToolCall } from '../ai'
+import type {
+  AiChatMessage,
+  AiChatProtocolTurn,
+  AiChatTool,
+  AiImageContentPart,
+  AiTextContentPart,
+  AiToolCall
+} from '../../../core/aiChatTransport.js'
 
 /** 单轮模型回复的归一化结果，跨三种接口格式统一。 */
-export interface AssistantTurn {
-  content: string
-  reasoningContent?: string
-  toolCalls: ToolCall[]
-}
+export type AssistantTurn = AiChatProtocolTurn
 
 /** Anthropic 接口要求的默认最大输出 token 数。 */
 export const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192
@@ -17,7 +20,7 @@ export const ANTHROPIC_DEFAULT_MAX_TOKENS = 8192
  * @param messages 插件维护的标准消息历史
  * @returns Responses API 的 input 数组（以普通对象表达，交由适配器按需断言）
  */
-export function toResponsesInput(messages: Message[]): Record<string, unknown>[] {
+export function toResponsesInput(messages: AiChatMessage[]): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = []
   for (const message of messages) {
     // 工具结果回传为独立的 function_call_output 输入项，沿用模型生成的 call_id。
@@ -60,7 +63,7 @@ export function toResponsesInput(messages: Message[]): Record<string, unknown>[]
  * @param tools 可选的工具列表
  * @returns 函数工具数组；无工具时返回 undefined
  */
-export function toResponsesTools(tools?: Tool[]): Record<string, unknown>[] | undefined {
+export function toResponsesTools(tools?: AiChatTool[]): Record<string, unknown>[] | undefined {
   if (!tools?.length) return undefined
   return tools.map((tool) => ({
     type: 'function',
@@ -80,7 +83,7 @@ export function toResponsesTools(tools?: Tool[]): Record<string, unknown>[] | un
 export function fromResponsesOutput(output: unknown): AssistantTurn {
   let content = ''
   let reasoningContent = ''
-  const toolCalls: ToolCall[] = []
+  const toolCalls: AiToolCall[] = []
   // 输出项可能是文本消息、函数调用或推理项，按 type 分流后分别归一化。
   for (const item of Array.isArray(output) ? output : []) {
     const type = readString((item as Record<string, unknown>).type)
@@ -116,7 +119,7 @@ export function fromResponsesOutput(output: unknown): AssistantTurn {
  * @returns 字符串或 Responses 输入内容块数组
  */
 function toResponsesMessageContent(
-  content: Message['content']
+  content: AiChatMessage['content']
 ): string | Record<string, unknown>[] {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return typeof content === 'string' ? content : ''
@@ -166,7 +169,7 @@ export interface AnthropicConversation {
  * @param messages 插件维护的标准消息历史
  * @returns 提取出的 system 文本与转换后的消息序列
  */
-export function toAnthropicMessages(messages: Message[]): AnthropicConversation {
+export function toAnthropicMessages(messages: AiChatMessage[]): AnthropicConversation {
   const systemParts: string[] = []
   const turns: AnthropicMessage[] = []
 
@@ -224,7 +227,7 @@ export function toAnthropicMessages(messages: Message[]): AnthropicConversation 
  * @param tools 可选的工具列表
  * @returns Anthropic 工具数组；无工具时返回 undefined
  */
-export function toAnthropicTools(tools?: Tool[]): AnthropicTool[] | undefined {
+export function toAnthropicTools(tools?: AiChatTool[]): AnthropicTool[] | undefined {
   if (!tools?.length) return undefined
   return tools.map((tool) => ({
     name: tool.function?.name ?? '',
@@ -244,7 +247,7 @@ export function toAnthropicTools(tools?: Tool[]): AnthropicTool[] | undefined {
 export function fromAnthropicContent(content: unknown): AssistantTurn {
   let textContent = ''
   let reasoning = ''
-  const toolCalls: ToolCall[] = []
+  const toolCalls: AiToolCall[] = []
   for (const block of Array.isArray(content) ? content : []) {
     const type = readString((block as Record<string, unknown>).type)
     if (type === 'text') {
@@ -273,7 +276,9 @@ export function fromAnthropicContent(content: unknown): AssistantTurn {
  * @param content 纯文本或多模态内容块
  * @returns 字符串或 Anthropic 内容块数组
  */
-function toAnthropicUserContent(content: Message['content']): string | AnthropicContentBlock[] {
+function toAnthropicUserContent(
+  content: AiChatMessage['content']
+): string | AnthropicContentBlock[] {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return typeof content === 'string' ? content : ''
   const blocks: AnthropicContentBlock[] = []
@@ -289,7 +294,9 @@ function toAnthropicUserContent(content: Message['content']): string | Anthropic
  * @param part 文本或图片内容块
  * @returns Anthropic 内容块；无法识别时返回 null
  */
-function toAnthropicContentPart(part: ContentPart): AnthropicContentBlock | null {
+function toAnthropicContentPart(
+  part: AiTextContentPart | AiImageContentPart
+): AnthropicContentBlock | null {
   if (part.type === 'text') {
     return { type: 'text', text: part.text }
   }

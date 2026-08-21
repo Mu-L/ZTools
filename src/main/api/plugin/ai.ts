@@ -3,7 +3,20 @@ import type { PluginManager } from '../../managers/pluginManager'
 import detachedWindowManager from '../../core/detachedWindowManager'
 import aiProviderService, { type ResolvedAiModel } from '../../core/aiProviderService.js'
 import { createAdapter } from './aiProtocol/adapters'
-import type { AiModelChoice } from '../../../shared/aiProviderShared.js'
+import {
+  normalizeAiModelCapabilities,
+  type AiModelChoice
+} from '../../../shared/aiProviderShared.js'
+import {
+  normalizeAiChatFailure,
+  streamSingleAiProtocolChat,
+  type AiChatEvent,
+  type AiChatOption,
+  type AiChatResult
+} from '../../core/aiChatTransport.js'
+import { createAiChatEventBatcher } from '../../core/aiChatEventBatcher.js'
+import aiRequestStatusTracker from '../../core/aiRequestStatusTracker.js'
+import type { AiRequestStatus, AiRequestStatusChange } from '../../../shared/aiRequestStatus.js'
 
 /**
  * AI 选项
@@ -82,12 +95,22 @@ class PluginAiAPI {
   private mainWindow: Electron.BrowserWindow | null = null
   private abortControllers: Map<string, AbortController> = new Map()
 
+  /**
+   * 绑定主窗口和插件管理器，并注册插件侧 AI IPC。
+   * @param mainWindow ZTools 主窗口
+   * @param pluginManager 插件运行时管理器
+   * @returns 无返回值
+   */
   public init(mainWindow: Electron.BrowserWindow, pluginManager: PluginManager): void {
     this.mainWindow = mainWindow
     this.pluginManager = pluginManager
     this.setupIPC()
   }
 
+  /**
+   * 注册模型调用、停止、模型发现和工具回调相关 IPC 通道。
+   * @returns 无返回值
+   */
   private setupIPC(): void {
     // 非流式调用 AI
     ipcMain.handle('plugin:ai-call', async (event, requestId: string, option: AiOption) => {
@@ -99,7 +122,7 @@ class PluginAiAPI {
         return await this.callAI(option, requestId, event.sender)
       } catch (error: unknown) {
         console.error('[AI] AI 调用失败:', error)
-        this.notifyAiStatus('idle', event.sender)
+        this.notifyAiStatus('idle', event.sender, requestId)
         return { success: false, error: error instanceof Error ? error.message : '未知错误' }
       }
     })
@@ -117,8 +140,36 @@ class PluginAiAPI {
         return { success: true }
       } catch (error: unknown) {
         console.error('[AI] AI 流式调用失败:', error)
-        this.notifyAiStatus('idle', event.sender)
+        this.notifyAiStatus('idle', event.sender, requestId)
         return { success: false, error: error instanceof Error ? error.message : '未知错误' }
+      }
+    })
+    // 单轮流式调用只负责协议传输，不执行模型生成的工具。
+    ipcMain.handle('plugin:ai-chat', async (event, requestId: string, option: AiChatOption) => {
+      const eventName = `plugin:ai-chat-event-${requestId}`
+      const eventBatcher = createAiChatEventBatcher(option?.streamBatchIntervalMs, (chatEvent) => {
+        if (!event.sender.isDestroyed()) event.sender.send(eventName, chatEvent)
+      })
+      try {
+        const pluginInfo = this.pluginManager?.getPluginInfoByWebContents(event.sender)
+        if (!pluginInfo) {
+          return {
+            success: false,
+            error: { code: 'INVALID_REQUEST', message: '无法获取插件信息' }
+          }
+        }
+        return await this.callSingleAIChat(option, requestId, event.sender, eventBatcher.push)
+      } catch (error: unknown) {
+        console.error('[AI] AI 单轮调用失败:', error)
+        this.notifyAiStatus('idle', event.sender, requestId)
+        return { success: false, error: normalizeAiChatFailure(error) }
+      } finally {
+        // 请求结束、异常和主动中止都先发布尾部增量，再发送投递完成哨兵。
+        eventBatcher.flush()
+        // invoke 结果可能先于普通 send 事件抵达；哨兵用于插件侧等待流事件全部入队。
+        if (!event.sender.isDestroyed()) {
+          event.sender.send(eventName, { type: '__ztools_ai_chat_delivery_end__' })
+        }
       }
     })
     // 中止 AI 调用
@@ -167,24 +218,40 @@ class PluginAiAPI {
       }
     })
   }
+  /**
+   * 更新请求状态，并把带插件身份的聚合状态发送给可展示该插件的窗口。
+   * @param status 当前请求状态
+   * @param webContents 发起请求的插件页面
+   * @param requestId 当前 AI 请求标识
+   * @returns 无返回值
+   */
   private notifyAiStatus(
-    status: 'idle' | 'sending' | 'receiving',
-    webContents: Electron.WebContents
+    status: AiRequestStatus,
+    webContents: Electron.WebContents,
+    requestId: string
   ): void {
     const pluginInfo = this.pluginManager?.getPluginInfoByWebContents(webContents)
     if (!pluginInfo) return
+
+    const change: AiRequestStatusChange = {
+      pluginName: pluginInfo.name,
+      pluginPath: pluginInfo.path,
+      status: aiRequestStatusTracker.update(webContents.id, requestId, status)
+    }
+
+    // 主窗口保存所有缓存插件的状态，由渲染层按当前插件路径选择展示。
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('ai-status-changed', change)
+    }
 
     const detachedWindows = detachedWindowManager.getAllWindows()
     for (const windowInfo of detachedWindows) {
       if (windowInfo.view.webContents === webContents) {
         if (windowInfo.window && !windowInfo.window.isDestroyed()) {
-          windowInfo.window.webContents.send('ai-status-changed', status)
+          windowInfo.window.webContents.send('ai-status-changed', change)
         }
         return
       }
-    }
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('ai-status-changed', status)
     }
   }
 
@@ -252,14 +319,14 @@ class PluginAiAPI {
     this.abortControllers.set(requestId, abortController)
 
     try {
-      this.notifyAiStatus('sending', webContents)
+      this.notifyAiStatus('sending', webContents, requestId)
       // 按供应商配置的接口格式选择适配器，统一工具调用循环。
       const adapter = createAdapter(resolvedModel.provider)
       const tools = option.tools?.length ? option.tools : undefined
       const messages = [...option.messages]
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        this.notifyAiStatus(round === 0 ? 'sending' : 'receiving', webContents)
+        this.notifyAiStatus(round === 0 ? 'sending' : 'receiving', webContents, requestId)
 
         const turn = await adapter.complete(
           { model: resolvedModel.model.modelId, messages, tools },
@@ -268,7 +335,7 @@ class PluginAiAPI {
 
         // 没有工具调用，直接返回结果。
         if (turn.toolCalls.length === 0) {
-          this.notifyAiStatus('idle', webContents)
+          this.notifyAiStatus('idle', webContents, requestId)
           return {
             success: true,
             data: {
@@ -294,16 +361,124 @@ class PluginAiAPI {
       }
 
       // 超过最大轮次
-      this.notifyAiStatus('idle', webContents)
+      this.notifyAiStatus('idle', webContents, requestId)
       return { success: false, error: '工具调用轮次超过限制' }
     } catch (error: unknown) {
-      this.notifyAiStatus('idle', webContents)
+      this.notifyAiStatus('idle', webContents, requestId)
       if (error instanceof Error && error.name === 'AbortError') {
         return { success: false, error: 'AI 调用已中止' }
       }
       return { success: false, error: error instanceof Error ? error.message : '未知错误' }
     } finally {
       this.abortControllers.delete(requestId)
+    }
+  }
+
+  /**
+   * 执行一次由插件管理工具循环的流式请求。
+   * @param option 单轮消息、工具和生成参数
+   * @param requestId 当前请求唯一标识
+   * @param webContents 发起请求的插件页面
+   * @param onEvent 单轮流式事件接收器
+   * @returns 成功时返回完整助手响应，失败时返回结构化错误
+   */
+  private async callSingleAIChat(
+    option: AiChatOption,
+    requestId: string,
+    webContents: Electron.WebContents,
+    onEvent: (event: AiChatEvent) => void
+  ): Promise<
+    | { success: true; data: AiChatResult }
+    | { success: false; error: ReturnType<typeof normalizeAiChatFailure> }
+  > {
+    // 在解析供应商前拒绝空请求，确保插件始终收到可路由的稳定错误码。
+    if (!option || !Array.isArray(option.messages) || option.messages.length === 0) {
+      return {
+        success: false,
+        error: {
+          name: 'Error',
+          code: 'INVALID_REQUEST',
+          message: 'AI 消息列表不能为空'
+        }
+      }
+    }
+    if (!requestId || this.abortControllers.has(requestId)) {
+      return {
+        success: false,
+        error: {
+          name: 'Error',
+          code: 'INVALID_REQUEST',
+          message: requestId ? 'AI 请求标识已在使用中' : 'AI 请求标识不能为空'
+        }
+      }
+    }
+
+    const resolvedModel = await this.getModelConfig(option.model)
+    if (!resolvedModel) {
+      return {
+        success: false,
+        error: {
+          name: 'Error',
+          code: 'NOT_FOUND',
+          message: '未找到 AI 模型配置，请先在设置中添加模型'
+        }
+      }
+    }
+
+    const abortController = new AbortController()
+    this.abortControllers.set(requestId, abortController)
+    const timeout = Math.min(
+      300_000,
+      Math.max(5_000, Math.round(Number(option.timeout) || 120_000))
+    )
+    const capabilities = normalizeAiModelCapabilities(resolvedModel.model)
+    let timedOut = false
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true
+      abortController.abort()
+    }, timeout)
+    try {
+      // 请求标识先于网络调用发布，确保插件可以立即停止。
+      this.notifyAiStatus('sending', webContents, requestId)
+      onEvent({ type: 'request', requestId })
+      const requestOption: AiChatOption = {
+        ...option,
+        // 能力与协议映射只能来自宿主模型配置，插件仅可选择公开的档位 ID。
+        modelReasoning: capabilities.reasoning,
+        reasoningEffort: option.reasoningEffort ?? option.reasoning?.effort
+      }
+      /**
+       * 将协议传输事件转发给插件并同步宿主接收状态。
+       * @param event 当前协议产生的统一流式事件
+       * @returns 无返回值
+       */
+      const emitEvent = (event: AiChatEvent): void => {
+        this.notifyAiStatus('receiving', webContents, requestId)
+        onEvent(event)
+      }
+      // 三种协议均通过统一 adapter 传输，保证请求字段与流式事件语义一致。
+      const result = await streamSingleAiProtocolChat(
+        createAdapter(resolvedModel.provider, timeout),
+        resolvedModel.model.modelId,
+        requestOption,
+        abortController.signal,
+        emitEvent
+      )
+      return { success: true, data: result }
+    } catch (error: unknown) {
+      if (timedOut) {
+        const timeoutError = new Error(`AI 请求在 ${timeout}ms 后超时`) as Error & {
+          normalizedCode?: string
+        }
+        timeoutError.normalizedCode = 'TIMEOUT'
+        return { success: false, error: normalizeAiChatFailure(timeoutError) }
+      }
+      return { success: false, error: normalizeAiChatFailure(error) }
+    } finally {
+      // 只清理本次请求，其他会话的并发请求继续运行。
+      clearTimeout(timeoutHandle)
+      this.abortControllers.delete(requestId)
+      this.notifyAiStatus('idle', webContents, requestId)
     }
   }
   /**
@@ -331,14 +506,14 @@ class PluginAiAPI {
     this.abortControllers.set(requestId, abortController)
 
     try {
-      this.notifyAiStatus('sending', webContents)
+      this.notifyAiStatus('sending', webContents, requestId)
       // 按供应商配置的接口格式选择适配器，统一工具调用循环。
       const adapter = createAdapter(resolvedModel.provider)
       const tools = option.tools?.length ? option.tools : undefined
       const messages = [...option.messages]
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        this.notifyAiStatus(round === 0 ? 'sending' : 'receiving', webContents)
+        this.notifyAiStatus(round === 0 ? 'sending' : 'receiving', webContents, requestId)
 
         // 首个增量到达时切换为接收状态，与既有 UX 保持一致。
         let receivingNotified = false
@@ -348,7 +523,7 @@ class PluginAiAPI {
           (delta) => {
             if (!receivingNotified) {
               receivingNotified = true
-              this.notifyAiStatus('receiving', webContents)
+              this.notifyAiStatus('receiving', webContents, requestId)
             }
             onChunk({
               role: 'assistant',
@@ -360,7 +535,7 @@ class PluginAiAPI {
 
         // 流结束且无工具调用，本轮直接结束。
         if (turn.toolCalls.length === 0) {
-          this.notifyAiStatus('idle', webContents)
+          this.notifyAiStatus('idle', webContents, requestId)
           return
         }
 
@@ -378,10 +553,10 @@ class PluginAiAPI {
         }
       }
 
-      this.notifyAiStatus('idle', webContents)
+      this.notifyAiStatus('idle', webContents, requestId)
       throw new Error('工具调用轮次超过限制')
     } catch (error: unknown) {
-      this.notifyAiStatus('idle', webContents)
+      this.notifyAiStatus('idle', webContents, requestId)
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('AI 调用已中止')
       }
