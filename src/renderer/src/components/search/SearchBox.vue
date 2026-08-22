@@ -2,6 +2,8 @@
   <div
     ref="searchBoxRef"
     class="search-box"
+    :class="{ 'is-compact': windowStore.compactMainWindowHeader }"
+    :style="{ height: `${mainWindowHeaderHeight}px` }"
     @mousedown="handleMouseDown"
     @dblclick="handleDoubleClick"
   >
@@ -264,6 +266,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import PluginUpgradeIcon from '@renderer/assets/icons/plugin-upgrade.svg?component'
+import { resolveMainWindowHeaderHeight } from '@shared/mainWindowLayout'
 import { normalizeConfigList } from '@shared/pluginSettings'
 import {
   resolveMainPushMenuState,
@@ -317,6 +320,9 @@ const emit = defineEmits<{
 }>()
 
 const windowStore = useWindowStore()
+const mainWindowHeaderHeight = computed(() =>
+  resolveMainWindowHeaderHeight(windowStore.compactMainWindowHeader)
+)
 
 const searchBoxRef = ref<HTMLDivElement | null>(null)
 const searchActionsRef = ref<HTMLDivElement | null>(null)
@@ -1292,6 +1298,79 @@ defineExpose({
   user-select: none; /* 禁止选取文本 */
   border-radius: 0; /* 组件本身不要圆角 */
   height: 58px;
+}
+
+.search-box.is-compact {
+  padding-block: 3px;
+  padding-inline: 8px;
+}
+
+.search-box.is-compact .measure-text,
+.search-box.is-compact .placeholder-text,
+.search-box.is-compact .search-input {
+  font-size: 20px;
+}
+
+.search-box.is-compact .search-input {
+  height: 38px;
+}
+
+.search-box.is-compact .pasted-image-thumbnail {
+  width: 38px;
+  height: 38px;
+}
+
+.search-box.is-compact .pasted-files,
+.search-box.is-compact .pasted-text {
+  height: 32px;
+  padding-inline: 10px;
+}
+
+.search-box.is-compact .plugin-tag {
+  height: 32px;
+  border-radius: 16px;
+  padding-right: 3px;
+}
+
+.search-box.is-compact .plugin-tag-left {
+  height: 32px;
+  gap: 5px;
+  padding: 6px 7px;
+}
+
+.search-box.is-compact .plugin-tag.has-cmd .plugin-tag-left {
+  padding-right: 18px;
+}
+
+.search-box.is-compact .plugin-tag-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.search-box.is-compact .plugin-tag-title {
+  font-size: 15px;
+}
+
+.search-box.is-compact .plugin-tag-cmd {
+  font-size: 13px;
+  padding-inline: 3px;
+}
+
+.search-box.is-compact .plugin-tag-close {
+  width: 18px;
+  height: 18px;
+}
+
+.search-box.is-compact .search-btn,
+.search-box.is-compact .avatar-container {
+  width: 34px;
+  height: 34px;
+}
+
+.search-box.is-compact .avatar-spinner {
+  right: -3px;
+  width: 40px;
+  height: 40px;
 }
 
 /* 拖放蒙版 */
