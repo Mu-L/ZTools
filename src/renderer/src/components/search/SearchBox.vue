@@ -1373,6 +1373,32 @@ defineExpose({
   height: 40px;
 }
 
+.search-box.is-compact .update-notification {
+  border-radius: 7px;
+}
+
+.search-box.is-compact .update-action {
+  gap: 6px;
+  padding: 4px 6px 4px 9px;
+}
+
+.search-box.is-compact .update-text {
+  font-size: 12px;
+}
+
+.search-box.is-compact .update-action :deep(svg) {
+  width: 26px;
+  height: 26px;
+}
+
+.search-box.is-compact .update-dismiss {
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+}
+
 /* 拖放蒙版 */
 .drag-overlay {
   position: absolute;
