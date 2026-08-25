@@ -95,6 +95,12 @@ export class SystemAPI {
     }
   }
 
+  /**
+   * 获取最近复制的内容（供渲染进程被动即时查询）。
+   *
+   * @param timeLimit 可选的时间限制（毫秒），不传或传 0 表示无时间限制。
+   * @returns 最近复制的内容对象；无有效内容时返回 null。
+   */
   private async getLastCopiedContent(timeLimit?: number): Promise<{
     type: 'text' | 'image' | 'file'
     data: string | Array<{ path: string; name: string; isDirectory: boolean }>
