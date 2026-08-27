@@ -137,6 +137,7 @@
           @keydown.down="(e) => keydownEvent(e, 'down')"
           @keydown.up="(e) => keydownEvent(e, 'up')"
           @keydown.enter="(e) => keydownEvent(e, 'enter')"
+          @keydown.tab="(e) => keydownEvent(e, 'tab')"
           @paste="handlePaste"
         />
       </div>
@@ -273,6 +274,7 @@ import {
   toggleMainPushSetting
 } from '../../composables/useMainPushSetting'
 import { DEFAULT_AVATAR, useWindowStore } from '../../stores/windowStore'
+import type { NavDirectionKey } from '@renderer/utils/convertKeyboardEvent'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 import UpdateIcon from './UpdateIcon.vue'
 
@@ -309,11 +311,7 @@ const emit = defineEmits<{
   (e: 'update:pastedFiles', value: FileItem[] | null): void
   (e: 'update:pastedText', value: string | null): void
   (e: 'keydown', event: KeyboardEvent): void
-  (
-    e: 'arrow-keydown',
-    event: KeyboardEvent,
-    direction: 'left' | 'right' | 'up' | 'down' | 'enter'
-  ): void
+  (e: 'arrow-keydown', event: KeyboardEvent, direction: NavDirectionKey): void
   (e: 'composing', isComposing: boolean): void
   (e: 'settings-click'): void
   (e: 'close-plugin'): void
@@ -691,16 +689,19 @@ async function onKeydown(event: KeyboardEvent): Promise<void> {
   emit('keydown', event)
 }
 
-function keydownEvent(
-  event: KeyboardEvent,
-  direction: 'left' | 'right' | 'up' | 'down' | 'enter'
-): void {
-  // 如果正在输入法组合中,不触发键盘事件
+/**
+ * 处理搜索输入框的导航按键事件（方向键、回车键、Tab键），向上层派发转发或导航请求。
+ * @param event 键盘事件对象。
+ * @param direction 按键动作类型（'left' | 'right' | 'up' | 'down' | 'enter' | 'tab'）。
+ * @returns 无返回值。
+ */
+function keydownEvent(event: KeyboardEvent, direction: NavDirectionKey): void {
+  // 处于输入法组合态时，忽略导航与按键转发，避免打断拼音选词
   if (isComposing.value) {
     return
   }
 
-  // 如果输入框有选中的文字,不触发列表导航（仅搜索模式下生效，插件模式下需要转发给插件）
+  // 搜索模式下若存在文本选中态，阻止列表导航以优先保障输入框文本编辑行为
   if (
     props.currentView !== 'plugin' &&
     inputRef.value &&
@@ -710,6 +711,7 @@ function keydownEvent(
     return
   }
 
+  // 向父组件派发按键动作，供上层决定列表导航或转发给插件
   emit('arrow-keydown', event, direction)
 }
 

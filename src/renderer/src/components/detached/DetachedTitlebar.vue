@@ -739,7 +739,11 @@ function handleDblClick(): void {
   }
 }
 
-// 键盘事件处理
+/**
+ * 键盘事件处理，拦截并转发回车、Tab 及方向键至插件。
+ * @param event 键盘事件对象。
+ * @returns 无返回值。
+ */
 function handleKeydown(event: KeyboardEvent): void {
   // ESC 键清空输入
   if (event.key === 'Escape') {
@@ -752,11 +756,20 @@ function handleKeydown(event: KeyboardEvent): void {
     return
   }
 
-  // 回车键传递给插件
+  // 提取当前生效的修饰键
   const modifiers = readModifiers(event)
+
+  // 回车键传递给插件
   if (event.key === 'Enter') {
     event.preventDefault()
     sendKeyToPlugin('Enter', modifiers)
+    return
+  }
+
+  // Tab 键传递给插件（同时阻止宿主标题栏 DOM 焦点跳转）
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    sendKeyToPlugin('Tab', modifiers)
     return
   }
 
@@ -772,7 +785,12 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
-// 发送方向键到插件
+/**
+ * 发送方向键按键事件至插件。
+ * @param key 方向键键名（ArrowLeft/ArrowRight/ArrowUp/ArrowDown）。
+ * @param modifiers 修饰键列表。
+ * @returns 无返回值。
+ */
 function sendArrowKeyToPlugin(key: string, modifiers: CommonKeyboardModifier[] = []): void {
   const keyCodeMap: Record<string, string> = {
     ArrowLeft: 'Left',
@@ -800,7 +818,12 @@ function sendArrowKeyToPlugin(key: string, modifiers: CommonKeyboardModifier[] =
   }
 }
 
-// 发送按键到插件（用于回车键等）
+/**
+ * 发送通用功能键按键事件至插件（用于回车键、Tab 键等）。
+ * @param key 目标键名字符串（例如 'Enter'、'Tab'）。
+ * @param modifiers 修饰键列表。
+ * @returns 无返回值。
+ */
 function sendKeyToPlugin(key: string, modifiers: CommonKeyboardModifier[] = []): void {
   // 发送 keyDown 事件
   window.electron.ipcRenderer.send('send-arrow-key', {
