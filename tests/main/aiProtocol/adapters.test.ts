@@ -41,6 +41,61 @@ afterEach(() => {
 })
 
 describe('aiProtocol adapters', () => {
+  it('uses configured fixed and range temperatures and omits undeclared temperature', async () => {
+    const responses = [
+      { id: 'fixed', temperature: { mode: 'fixed', value: 1 } as const, requested: 0.2 },
+      {
+        id: 'range-default',
+        temperature: { mode: 'range', min: 0.4, max: 1.2, default: 0.8 } as const
+      },
+      {
+        id: 'range-clamped',
+        temperature: { mode: 'range', min: 0.4, max: 1.2, default: 0.8 } as const,
+        requested: 2
+      },
+      { id: 'undeclared', requested: 0.2 }
+    ]
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: 'temperature-test',
+            object: 'chat.completion',
+            choices: [
+              { index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }
+            ]
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    for (const item of responses) {
+      const adapter = createAdapter(createProvider('openai-chat'))
+      await adapter.complete(
+        {
+          model: 'model-a',
+          messages: [{ role: 'user', content: '测试' }],
+          ...(item.requested === undefined ? {} : { temperature: item.requested }),
+          ...(item.temperature === undefined ? {} : { modelTemperature: item.temperature })
+        },
+        new AbortController().signal
+      )
+      const body = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))
+      const expected =
+        item.temperature?.mode === 'fixed'
+          ? 1
+          : item.temperature?.mode === 'range'
+            ? Math.min(
+                item.temperature.max,
+                Math.max(item.temperature.min, item.requested ?? item.temperature.default)
+              )
+            : undefined
+      if (expected === undefined) expect(body).not.toHaveProperty('temperature')
+      else expect(body.temperature).toBe(expected)
+    }
+  })
+
   it('rejects forced Anthropic tool choice while extended thinking is enabled', async () => {
     const adapter = createAdapter(createProvider('anthropic-messages'))
 
@@ -245,6 +300,7 @@ describe('aiProtocol adapters', () => {
         ],
         toolChoice: 'required',
         temperature: 0.8,
+        modelTemperature: { mode: 'range', min: 0, max: 2, default: 0.2 },
         maxTokens: 3072,
         modelReasoning: {
           protocol: 'openai-compatible',

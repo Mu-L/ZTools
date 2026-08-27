@@ -637,6 +637,20 @@ export class InternalPluginAPI {
       }
     })
 
+    ipcMain.handle('internal:ai-providers-get-official', async (event) => {
+      if (!requireInternalPlugin(this.pluginManager, event)) {
+        throw new PermissionDeniedError('internal:ai-providers-get-official')
+      }
+      try {
+        return { success: true, data: await aiModelsAPI.getOfficialProvider() }
+      } catch (error: unknown) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '获取官方模型失败'
+        }
+      }
+    })
+
     ipcMain.handle('internal:ai-providers-add', async (event, provider: any) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:ai-providers-add')

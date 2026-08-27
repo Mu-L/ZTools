@@ -2,7 +2,8 @@ import {
   normalizeAiReasoningEffort,
   type AiApiFormat,
   type AiReasoningCapability,
-  type AiReasoningEffort
+  type AiReasoningEffort,
+  type AiTemperatureCapability
 } from '../../shared/aiProviderShared.js'
 
 /** OpenAI Chat Completions 支持的文本内容块。 */
@@ -93,6 +94,8 @@ export interface AiChatOption {
   reasoning?: { effort?: AiReasoningEffort | 'none' }
   /** 宿主解析模型后注入的内部推理能力，不接受插件自行声明。 */
   modelReasoning?: AiReasoningCapability
+  /** 宿主解析模型后注入的温度能力，不接受插件自行声明。 */
+  modelTemperature?: AiTemperatureCapability
   temperature?: number
   maxTokens?: number
   timeout?: number
@@ -145,6 +148,8 @@ export interface AiChatProtocolInput {
   maxTokens?: number
   /** 宿主解析后的模型推理能力，不接受插件自行声明。 */
   modelReasoning?: AiReasoningCapability
+  /** 宿主解析后的模型温度能力，不接受插件自行声明。 */
+  modelTemperature?: AiTemperatureCapability
   /** 本次请求选择的标准推理档位。 */
   reasoningEffort?: AiReasoningEffort | 'none'
 }
@@ -440,6 +445,7 @@ export async function streamSingleAiProtocolChat(
       temperature: option.temperature,
       maxTokens: option.maxTokens,
       modelReasoning: option.modelReasoning,
+      modelTemperature: option.modelTemperature,
       reasoningEffort: option.reasoningEffort ?? option.reasoning?.effort
     },
     signal,

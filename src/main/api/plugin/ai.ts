@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
 import detachedWindowManager from '../../core/detachedWindowManager'
 import aiProviderService, { type ResolvedAiModel } from '../../core/aiProviderService.js'
+import officialAIService from '../../core/officialAIService.js'
 import { createAdapter } from './aiProtocol/adapters'
 import {
   normalizeAiModelCapabilities,
@@ -262,7 +263,14 @@ class PluginAiAPI {
    * @returns 带供应商展示信息的模型条目
    */
   private async getAllAiModels(): Promise<AiModelChoice[]> {
-    return aiProviderService.getModelChoices()
+    const localModels = aiProviderService.getModelChoices()
+    try {
+      return [...localModels, ...(await officialAIService.getModelChoices())]
+    } catch (error) {
+      // 官方服务暂不可用不应隐藏用户已经配置的本地模型。
+      console.warn('[AI] 获取官方模型失败:', error)
+      return localModels
+    }
   }
 
   /**
@@ -272,9 +280,21 @@ class PluginAiAPI {
    * @throws 旧式远端模型 ID 同时匹配多个供应商时抛出歧义错误
    */
   private async getModelConfig(modelRef?: string): Promise<ResolvedAiModel | null> {
-    return aiProviderService.resolveModel(modelRef)
+    // 明确的官方选择值优先解析，避免被本地同名模型抢占。
+    if (officialAIService.isOfficialReference(modelRef)) {
+      return officialAIService.resolveModel(modelRef)
+    }
+    const localModel = aiProviderService.resolveModel(modelRef)
+    if (localModel) return localModel
+    return officialAIService.resolveModel(modelRef)
   }
 
+  /**
+   * 在插件页面中执行模型请求的工具调用。
+   * @param toolCall 模型返回的函数名称和参数
+   * @param webContents 发起 AI 请求的插件页面
+   * @returns 序列化后的工具执行结果
+   */
   private async executeToolCall(
     toolCall: { id: string; function: { name: string; arguments: string } },
     webContents: Electron.WebContents
@@ -448,6 +468,7 @@ class PluginAiAPI {
         ...option,
         // 能力与协议映射只能来自宿主模型配置，插件仅可选择公开的档位 ID。
         modelReasoning: capabilities.reasoning,
+        modelTemperature: capabilities.temperature,
         reasoningEffort: option.reasoningEffort ?? option.reasoning?.effort
       }
       /**
@@ -570,6 +591,11 @@ class PluginAiAPI {
     }
   }
 
+  /**
+   * 中止指定 AI 请求并清理对应控制器。
+   * @param requestId 当前 AI 请求标识
+   * @returns 无返回值
+   */
   private abortAICall(requestId: string): void {
     const abortController = this.abortControllers.get(requestId)
     if (abortController) {

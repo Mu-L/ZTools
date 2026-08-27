@@ -1312,6 +1312,39 @@ window.ztools = {
       await electron.ipcRenderer.invoke('sync:skip-default-import'),
     syncGetRetryStatus: async () => await electron.ipcRenderer.invoke('sync:get-retry-status'),
     syncGetAccountStats: async () => await electron.ipcRenderer.invoke('sync:get-account-stats'),
+    /**
+     * 获取当前官方账号的 AI 积分。
+     * @returns {Promise<unknown>} 积分查询结果
+     */
+    syncGetAccountCredits: async () =>
+      await electron.ipcRenderer.invoke('sync:get-account-credits'),
+    /**
+     * 创建官方 AI 积分充值订单。
+     * @param {string} amount 人民币充值金额
+     * @returns {Promise<unknown>} 订单创建结果
+     */
+    syncCreateAIRechargeOrder: async (amount) =>
+      await electron.ipcRenderer.invoke('sync:create-ai-recharge-order', amount),
+    /**
+     * 查询官方 AI 积分充值订单状态。
+     * @param {string} orderId 服务端订单编号
+     * @returns {Promise<unknown>} 订单查询结果
+     */
+    syncGetAIRechargeOrder: async (orderId) =>
+      await electron.ipcRenderer.invoke('sync:get-ai-recharge-order', orderId),
+    /**
+     * 在独立支付窗口中打开爱发电收银台。
+     * @param {string} paymentUrl 服务端签发的收银台链接
+     * @returns {Promise<unknown>} 页面打开结果
+     */
+    syncOpenAIRechargeURL: async (paymentUrl) =>
+      await electron.ipcRenderer.invoke('sync:open-ai-recharge-url', paymentUrl),
+    /**
+     * 关闭当前爱发电支付窗口并恢复 ZTools 主窗口。
+     * @returns {Promise<unknown>} 窗口关闭结果
+     */
+    syncCloseAIRechargeWindow: async () =>
+      await electron.ipcRenderer.invoke('sync:close-ai-recharge-window'),
     syncGetAccountProfile: async () =>
       await electron.ipcRenderer.invoke('sync:get-account-profile'),
     syncUploadAccountAvatar: async (avatarPath) =>
@@ -1432,6 +1465,12 @@ window.ztools = {
        * @returns 供应商配置查询结果
        */
       getAll: async () => await electron.ipcRenderer.invoke('internal:ai-providers-get-all'),
+      /**
+       * 获取只读的 ZTools 官方模型和登录状态。
+       * @returns {Promise<unknown>} 官方模型查询结果
+       */
+      getOfficial: async () =>
+        await electron.ipcRenderer.invoke('internal:ai-providers-get-official'),
       /**
        * 添加 AI 供应商。
        * @param {object} provider 供应商连接信息和已选模型

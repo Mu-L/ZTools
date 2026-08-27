@@ -12,7 +12,9 @@
 ## E2E 验证
 
 - 使用 Playwright Electron 运行端到端测试：`pnpm test:e2e`。
-- 命令会先构建 ZTools 主程序，再由 Playwright 自动启动设置插件开发服务器（`127.0.0.1:15177`）和隔离的 Electron 测试实例，无需手动启动服务。
+- 修改 ZTools 后必须直接使用开发方式进行 E2E，不要为了 E2E 打包应用，不要执行 `electron-builder`、`pnpm build:unpack` 或使用 `dist/*.app`。
+- 命令会先构建可供源码 Electron 启动的 ZTools 主程序，再由 Playwright 自动启动设置插件开发服务器（`127.0.0.1:15177`）和隔离的 Electron 测试实例；这不属于应用打包，无需手动启动服务。
+- 专项 E2E 同样使用源码项目作为 Electron 启动参数，并通过 `ZTOOLS_SETTING_DEV_SERVER_URL=http://127.0.0.1:15177` 加载设置插件开发页面。
 - E2E 使用临时数据目录，不得读写真实的 `~/.ztools`；新增用例必须继续传入隔离的数据与旧数据目录。
 - 排查插件界面时直接截取插件 WebContentsView，不要与宿主窗口截图拼接。
 - 默认只截取当前可见区域；只有测试明确要求时才增加全页面或滚动截图逻辑。

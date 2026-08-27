@@ -20,6 +20,12 @@ export const DEFAULT_AI_CONTEXT_WINDOW = 262_144
 /** 模型支持的输入模态。 */
 export type AiInputModality = 'text' | 'image'
 
+/** 单个模型可接受的温度配置。 */
+export type AiTemperatureCapability =
+  | false
+  | { mode: 'fixed'; value: number }
+  | { mode: 'range'; min: number; max: number; default: number }
+
 /** OpenAI 兼容模型的推理请求协议。 */
 export type AiReasoningProtocol = 'auto' | 'passthrough' | 'openai-compatible' | 'deepseek'
 
@@ -78,6 +84,7 @@ export interface AiModelCapabilities {
   contextWindow: number
   inputModalities: AiInputModality[]
   reasoning?: AiReasoningCapability
+  temperature?: AiTemperatureCapability
 }
 
 /** 旧版按单个模型保存的配置。 */
@@ -105,6 +112,7 @@ export interface AiProviderModel {
   contextWindow?: number
   inputModalities?: AiInputModality[]
   reasoning?: AiReasoningCapability
+  temperature?: AiTemperatureCapability
 }
 
 /** 单个 AI 供应商及其已选模型。 */
@@ -136,6 +144,7 @@ export interface AiProviderModelInput {
   inputModalities?: AiInputModality[]
   /** null 表示显式清除旧推理配置并恢复供应商默认。 */
   reasoning?: AiReasoningCapability | null
+  temperature?: AiTemperatureCapability | null
 }
 
 /** 新建或编辑供应商时提交的数据。 */
@@ -170,6 +179,90 @@ export interface AiModelChoice {
   contextWindow: number
   inputModalities: AiInputModality[]
   reasoning?: AiModelReasoningInfo
+  temperature?: AiTemperatureCapability
+}
+
+/** ZTools Server 返回的官方模型思考档位。 */
+export interface OfficialAiReasoningEffort {
+  id: AiReasoningEffort
+  label: string
+}
+
+/** ZTools Server 返回的单个官方模型。 */
+export interface OfficialAiModel {
+  id: string
+  choiceId: string
+  name: string
+  icon?: string
+  family: string
+  enabled: boolean
+  capabilities: {
+    chat: boolean
+    tools: boolean
+    stream: boolean
+    contextWindow: number
+    inputModalities: AiInputModality[]
+    reasoning: {
+      supported: boolean
+      requestMode?: AiReasoningProtocol
+      efforts: OfficialAiReasoningEffort[]
+      effortMappings?: AiReasoningEffortMap
+      defaultEffort?: AiReasoningEffort
+      responseField?: AiReasoningResponseField
+    }
+    temperature?:
+      | { mode: 'unsupported' }
+      | { mode: 'fixed'; value: number }
+      | { mode: 'range'; min: number; max: number; default: number }
+  }
+  pricing?: {
+    unit: string
+    input: string
+    output: string
+    cacheRead: string
+  }
+}
+
+/** ZTools Server 返回的官方模型目录。 */
+export interface OfficialAiModelCatalog {
+  provider: { id: string; name: string }
+  models: OfficialAiModel[]
+}
+
+/** 设置页使用的官方模型供应商状态。 */
+export interface OfficialAiProviderStatus {
+  loggedIn: boolean
+  catalog: OfficialAiModelCatalog
+}
+
+/** 当前 ZTools 账号的官方 AI 积分。 */
+export interface OfficialAiCreditAccount {
+  balance: string
+  totalRecharged: string
+  syncedAt: number
+  provisioned: boolean
+  syncStatus: string
+}
+
+/** 爱发电支付订单在 ZTools 与 Server 之间共享的状态。 */
+export interface OfficialAiRechargeOrder {
+  id: string
+  amount: string
+  creditAmount: string
+  status:
+    | 'pending'
+    | 'crediting'
+    | 'paid_pending_credit'
+    | 'credited'
+    | 'amount_mismatch'
+    | 'failed'
+    | 'expired'
+  paymentUrl?: string
+  expiresAt: number
+  paidAt?: number
+  creditedAt?: number
+  createdAt: number
+  updatedAt: number
 }
 
 /** 推理档位的默认展示名称。 */
@@ -289,7 +382,7 @@ export function toAiModelReasoningInfo(
 }
 
 /**
- * 规范化模型的上下文、输入模态和推理配置。
+ * 规范化模型的上下文、输入模态、推理和温度配置。
  * @param value 可能来自旧存储或设置表单的模型配置
  * @returns 可安全暴露给插件的完整能力元数据
  */
@@ -306,11 +399,49 @@ export function normalizeAiModelCapabilities(
       )
     : ['text']
   const reasoning = normalizeAiReasoningCapability(value?.reasoning)
+  const temperature = normalizeAiTemperatureCapability(value?.temperature)
+  const normalizedModalities = Array.from(new Set<AiInputModality>(modalities))
+  if (normalizedModalities.length === 0) normalizedModalities.push('text')
   return {
     contextWindow,
-    inputModalities: Array.from(new Set<AiInputModality>(['text', ...modalities])),
-    ...(reasoning === undefined ? {} : { reasoning })
+    inputModalities: normalizedModalities,
+    ...(reasoning === undefined ? {} : { reasoning }),
+    ...(temperature === undefined ? {} : { temperature })
   }
+}
+
+/**
+ * 规范化模型温度能力，拒绝越界值；未声明能力时不推断温度默认值。
+ * @param value 模型保存的温度配置
+ * @returns 可安全用于请求适配器的温度能力
+ */
+export function normalizeAiTemperatureCapability(
+  value: unknown
+): AiTemperatureCapability | undefined {
+  if (value === false) return false
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const source = value as Record<string, unknown>
+  const mode = source.mode
+  if (mode === 'fixed') {
+    const fixed = Number(source.value)
+    return Number.isFinite(fixed) && fixed >= 0 && fixed <= 2 ? { mode, value: fixed } : undefined
+  }
+  if (mode === 'range') {
+    const min = Number(source.min)
+    const max = Number(source.max)
+    const defaultValue = Number(source.default)
+    return Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      Number.isFinite(defaultValue) &&
+      min >= 0 &&
+      max <= 2 &&
+      min <= defaultValue &&
+      defaultValue <= max
+      ? { mode, min, max, default: defaultValue }
+      : undefined
+  }
+  if (mode === 'unsupported') return false
+  return undefined
 }
 
 /** AI 供应商管理操作的统一结果。 */

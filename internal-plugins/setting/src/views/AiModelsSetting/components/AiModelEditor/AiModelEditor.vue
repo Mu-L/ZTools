@@ -5,11 +5,13 @@ import {
   AI_API_FORMAT_OPTIONS,
   AI_REASONING_EFFORTS,
   DEFAULT_AI_API_FORMAT,
+  type AiInputModality,
   type AiApiFormat,
   type AiReasoningConfig,
   type AiReasoningEffort,
   type AiReasoningProtocol,
   type AiReasoningResponseField,
+  type AiTemperatureCapability,
   type AiProvider,
   type AiProviderInput,
   type AiProviderModelInput,
@@ -97,10 +99,17 @@ function resetEditor(provider: AiProvider | null): void {
   fetchedModels.value = []
   selectedModelIds.value = new Set(provider?.selectedModels.map((model) => model.modelId) || [])
   selectedModelConfigs.value = Object.fromEntries(
-    (provider?.selectedModels || []).map((model) => [
-      model.modelId,
-      { modelId: model.modelId, ...normalizeAiModelCapabilities(model) }
-    ])
+    (provider?.selectedModels || []).map((model) => {
+      const capabilities = normalizeAiModelCapabilities(model)
+      return [
+        model.modelId,
+        {
+          modelId: model.modelId,
+          ...capabilities,
+          temperature: capabilities.temperature ?? false
+        }
+      ]
+    })
   )
   pendingModelIds.value = new Set()
   modelQuery.value = ''
@@ -216,13 +225,27 @@ function ensureModelConfig(modelId: string): AiProviderModelInput {
   if (!selectedModelConfigs.value[modelId]) {
     selectedModelConfigs.value[modelId] = {
       modelId,
-      ...normalizeAiModelCapabilities({ modelId })
+      ...normalizeAiModelCapabilities({ modelId }),
+      temperature: false
     }
   }
   return selectedModelConfigs.value[modelId]
 }
 
 type ReasoningCapabilityMode = 'provider-default' | 'unsupported' | 'custom'
+
+type TemperatureCapabilityMode = 'unsupported' | 'fixed' | 'range'
+
+type ConfiguredTemperatureCapability = Exclude<AiTemperatureCapability, false>
+
+const contextWindowBytesPerK = 1024
+const contextWindowMinK = 4
+const contextWindowMaxK = Math.floor(2_000_000 / contextWindowBytesPerK)
+
+const inputModalityOptions: ReadonlyArray<{ value: AiInputModality; label: string }> = [
+  { value: 'text', label: '文本' },
+  { value: 'image', label: '图片' }
+]
 
 /**
  * 判断模型当前采用的推理能力声明模式。
@@ -243,6 +266,103 @@ function reasoningCapabilityMode(modelId: string): ReasoningCapabilityMode {
 function reasoningConfig(modelId: string): AiReasoningConfig | null {
   const reasoning = ensureModelConfig(modelId).reasoning
   return reasoning && typeof reasoning === 'object' ? reasoning : null
+}
+
+/**
+ * 判断模型当前采用的温度能力声明模式。
+ * @param modelId 正在编辑的远端模型 ID
+ * @returns 不支持、固定值或范围模式
+ */
+function temperatureCapabilityMode(modelId: string): TemperatureCapabilityMode {
+  const temperature = ensureModelConfig(modelId).temperature
+  if (temperature === false) return 'unsupported'
+  return temperature && typeof temperature === 'object' ? temperature.mode : 'unsupported'
+}
+
+/**
+ * 获取模型已声明的温度配置。
+ * @param modelId 正在编辑的远端模型 ID
+ * @returns 固定值或范围配置；其他模式返回 null
+ */
+function temperatureConfig(modelId: string): ConfiguredTemperatureCapability | null {
+  const temperature = ensureModelConfig(modelId).temperature
+  return temperature && typeof temperature === 'object' ? temperature : null
+}
+
+/**
+ * 切换模型温度能力声明模式。
+ * @param modelId 正在编辑的远端模型 ID
+ * @param mode 新的温度能力模式
+ * @returns 无返回值
+ */
+function setTemperatureCapabilityMode(modelId: string, mode: TemperatureCapabilityMode): void {
+  const config = ensureModelConfig(modelId)
+  if (mode === 'unsupported') {
+    config.temperature = false
+    return
+  }
+  const current = temperatureConfig(modelId)
+  if (mode === 'fixed') {
+    config.temperature = current?.mode === 'fixed' ? current : { mode: 'fixed', value: 1 }
+    return
+  }
+  config.temperature =
+    current?.mode === 'range' ? current : { mode: 'range', min: 0, max: 2, default: 0.2 }
+}
+
+/**
+ * 更新模型温度配置中的数值字段。
+ * @param modelId 正在编辑的远端模型 ID
+ * @param field 要更新的温度字段
+ * @param value 输入的数值
+ * @returns 无返回值
+ */
+function updateTemperatureField(
+  modelId: string,
+  field: 'value' | 'min' | 'max' | 'default',
+  value: number
+): void {
+  const temperature = temperatureConfig(modelId)
+  if (!temperature || !(field in temperature)) return
+  ;(temperature as unknown as Record<string, number>)[field] = value
+}
+
+/**
+ * 获取编辑器中按 K 展示的上下文大小；供应商配置内部仍保存字节数。
+ * @param modelId 正在编辑的远端模型 ID
+ * @returns 上下文大小（K）
+ */
+function contextWindowK(modelId: string): number {
+  const bytes = Number(ensureModelConfig(modelId).contextWindow)
+  return Number.isFinite(bytes) && bytes > 0 ? bytes / contextWindowBytesPerK : 0
+}
+
+/**
+ * 将编辑器输入的 K 值转换为供应商配置保存的字节数。
+ * @param modelId 正在编辑的远端模型 ID
+ * @param value 上下文大小（K）
+ */
+function updateContextWindowK(modelId: string, value: number): void {
+  if (!Number.isFinite(value)) return
+  ensureModelConfig(modelId).contextWindow = Math.round(value * contextWindowBytesPerK)
+}
+
+/**
+ * 更新模型支持的输入模态，至少保留一种模态。
+ * @param modelId 正在编辑的远端模型 ID
+ * @param modality 要切换的输入模态
+ * @param enabled 是否声明支持该模态
+ * @returns 无返回值
+ */
+function setInputModality(modelId: string, modality: AiInputModality, enabled: boolean): void {
+  const config = ensureModelConfig(modelId)
+  const current = config.inputModalities?.length ? [...config.inputModalities] : ['text']
+  const next = enabled
+    ? Array.from(new Set([...current, modality]))
+    : current.filter((item) => item !== modality)
+  // 至少保留一种输入模态，避免生成无法调用的空能力声明。
+  if (next.length === 0) return
+  config.inputModalities = next
 }
 
 /**
@@ -399,12 +519,40 @@ function validateReasoningConfigs(): string {
 }
 
 /**
+ * 校验所有自定义温度能力是否满足范围约束。
+ * @returns 首个配置错误；全部有效时返回空字符串
+ */
+function validateTemperatureConfigs(): string {
+  for (const modelId of selectedModelIds.value) {
+    const temperature = temperatureConfig(modelId)
+    if (!temperature) continue
+    if (temperature.mode === 'fixed') {
+      if (!Number.isFinite(temperature.value) || temperature.value < 0 || temperature.value > 2) {
+        return `模型 ${modelId} 的固定温度必须在 0 到 2 之间`
+      }
+      continue
+    }
+    if (
+      ![temperature.min, temperature.max, temperature.default].every(Number.isFinite) ||
+      temperature.min < 0 ||
+      temperature.max > 2 ||
+      temperature.min > temperature.default ||
+      temperature.default > temperature.max
+    ) {
+      return `模型 ${modelId} 的温度范围必须满足 0 ≤ 最小值 ≤ 默认值 ≤ 最大值 ≤ 2`
+    }
+  }
+  return ''
+}
+
+/**
  * 将表单转换为供应商保存请求并提交给父视图。
  * @returns 无返回值
  */
 function handleSave(): void {
   // 保存前阻止不完整映射进入宿主持久化层，避免配置被静默降级。
   saveError.value = validateReasoningConfigs()
+  if (!saveError.value) saveError.value = validateTemperatureConfigs()
   if (saveError.value) return
 
   const selectedModels: AiProviderModelInput[] = Array.from(selectedModelIds.value).map(
@@ -429,7 +577,12 @@ function handleSave(): void {
         <div class="connection-fields">
           <div class="form-group">
             <label class="form-label">供应商名称 *</label>
-            <input v-model="formData.name" type="text" class="input" placeholder="例如：中转站 1" />
+            <input
+              v-model="formData.name"
+              type="text"
+              class="input"
+              placeholder="例如：我的 AI 供应商"
+            />
           </div>
 
           <div class="form-group">
@@ -569,14 +722,20 @@ function handleSave(): void {
               </div>
               <div v-if="selectedModelConfigs[modelId]" class="model-capability-grid">
                 <label>
-                  <span>上下文</span>
+                  <span>上下文（K）</span>
                   <input
-                    v-model.number="selectedModelConfigs[modelId].contextWindow"
+                    :value="contextWindowK(modelId)"
                     class="input"
                     type="number"
-                    min="4096"
-                    max="2000000"
-                    step="1024"
+                    :min="contextWindowMinK"
+                    :max="contextWindowMaxK"
+                    step="1"
+                    @input="
+                      updateContextWindowK(
+                        modelId,
+                        Number(($event.target as HTMLInputElement).value)
+                      )
+                    "
                   />
                 </label>
                 <label>
@@ -596,19 +755,140 @@ function handleSave(): void {
                     <option value="custom">自定义推理能力</option>
                   </select>
                 </label>
-                <label class="image-capability-toggle"
-                  ><input
-                    type="checkbox"
-                    :checked="selectedModelConfigs[modelId].inputModalities?.includes('image')"
+                <label>
+                  <span>温度能力</span>
+                  <select
+                    class="input"
+                    :value="temperatureCapabilityMode(modelId)"
                     @change="
-                      selectedModelConfigs[modelId].inputModalities = (
-                        $event.target as HTMLInputElement
-                      ).checked
-                        ? ['text', 'image']
-                        : ['text']
+                      setTemperatureCapabilityMode(
+                        modelId,
+                        ($event.target as HTMLSelectElement).value as TemperatureCapabilityMode
+                      )
                     "
-                  /><span>支持图片</span></label
-                >
+                  >
+                    <option value="unsupported">不支持</option>
+                    <option value="fixed">固定值</option>
+                    <option value="range">可调范围</option>
+                  </select>
+                </label>
+              </div>
+              <fieldset class="input-modalities-field">
+                <legend>输入模态</legend>
+                <label v-for="modality in inputModalityOptions" :key="modality.value">
+                  <input
+                    type="checkbox"
+                    :checked="
+                      selectedModelConfigs[modelId].inputModalities?.includes(modality.value)
+                    "
+                    @change="
+                      setInputModality(
+                        modelId,
+                        modality.value,
+                        ($event.target as HTMLInputElement).checked
+                      )
+                    "
+                  />
+                  <span>{{ modality.label }}</span>
+                </label>
+              </fieldset>
+              <div
+                v-if="temperatureCapabilityMode(modelId) === 'fixed'"
+                class="temperature-settings-grid"
+              >
+                <label>
+                  <span>固定温度</span>
+                  <input
+                    class="input"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    :value="
+                      temperatureConfig(modelId)?.mode === 'fixed'
+                        ? temperatureConfig(modelId)?.value
+                        : ''
+                    "
+                    @input="
+                      updateTemperatureField(
+                        modelId,
+                        'value',
+                        ($event.target as HTMLInputElement).valueAsNumber
+                      )
+                    "
+                  />
+                </label>
+              </div>
+              <div
+                v-else-if="temperatureCapabilityMode(modelId) === 'range'"
+                class="temperature-settings-grid"
+              >
+                <label>
+                  <span>最小温度</span>
+                  <input
+                    class="input"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    :value="
+                      temperatureConfig(modelId)?.mode === 'range'
+                        ? temperatureConfig(modelId)?.min
+                        : ''
+                    "
+                    @input="
+                      updateTemperatureField(
+                        modelId,
+                        'min',
+                        ($event.target as HTMLInputElement).valueAsNumber
+                      )
+                    "
+                  />
+                </label>
+                <label>
+                  <span>最大温度</span>
+                  <input
+                    class="input"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    :value="
+                      temperatureConfig(modelId)?.mode === 'range'
+                        ? temperatureConfig(modelId)?.max
+                        : ''
+                    "
+                    @input="
+                      updateTemperatureField(
+                        modelId,
+                        'max',
+                        ($event.target as HTMLInputElement).valueAsNumber
+                      )
+                    "
+                  />
+                </label>
+                <label>
+                  <span>默认温度</span>
+                  <input
+                    class="input"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    :value="
+                      temperatureConfig(modelId)?.mode === 'range'
+                        ? temperatureConfig(modelId)?.default
+                        : ''
+                    "
+                    @input="
+                      updateTemperatureField(
+                        modelId,
+                        'default',
+                        ($event.target as HTMLInputElement).valueAsNumber
+                      )
+                    "
+                  />
+                </label>
               </div>
               <template v-if="reasoningCapabilityMode(modelId) === 'custom'">
                 <div class="reasoning-settings-grid">
@@ -959,12 +1239,61 @@ function handleSave(): void {
   font-size: 12px;
 }
 
-.image-capability-toggle {
-  display: flex !important;
-  min-height: 32px;
+.input-modalities-field {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
   align-items: center;
-  grid-template-columns: auto auto;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+}
+
+.input-modalities-field legend {
+  padding: 0 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.input-modalities-field label {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-color);
+  font-size: 11px;
   white-space: nowrap;
+}
+
+.input-modalities-field input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--primary-color);
+}
+
+.temperature-settings-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.temperature-settings-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.temperature-settings-grid .input {
+  min-width: 0;
+  height: 32px;
+  padding: 4px 7px;
+  font-size: 12px;
 }
 
 .reasoning-settings-grid {
@@ -1156,7 +1485,8 @@ function handleSave(): void {
   .connection-fields,
   .model-tools,
   .reasoning-settings-grid,
-  .reasoning-efforts-field {
+  .reasoning-efforts-field,
+  .temperature-settings-grid {
     grid-template-columns: 1fr;
   }
 

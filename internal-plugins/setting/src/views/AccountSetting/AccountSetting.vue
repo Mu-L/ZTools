@@ -3,7 +3,8 @@ import defaultAvatar from '@/assets/image/default.png'
 import { BaseDialog, useToast } from '@/components'
 import { useAccountProfile } from '@/composables'
 import { notifyAccountChanged } from '@/composables/useZToolsAccount'
-import { computed, onMounted, ref } from 'vue'
+import type { OfficialAiRechargeOrder } from '@shared/aiProviderShared'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -16,6 +17,7 @@ const {
 } = useAccountProfile()
 
 const loadingStats = ref(false)
+const loadingCredits = ref(false)
 const editingNickname = ref(false)
 const nicknameInput = ref('')
 const updatingNickname = ref(false)
@@ -25,11 +27,25 @@ const showPasswordDialog = ref(false)
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
+const showRechargeDialog = ref(false)
+const rechargeAmount = ref('10')
+const creatingRechargeOrder = ref(false)
+const pollingRechargeOrder = ref(false)
+const rechargeOrder = ref<OfficialAiRechargeOrder | null>(null)
+const rechargePaymentWindowClosed = ref(false)
+const rechargePresets = ['5', '10', '20', '50', '100']
+let rechargePollTimer: ReturnType<typeof setInterval> | null = null
 const stats = ref<{
   documentCount: number
   attachmentCount: number
   storageBytes: number
   monthlyTraffic: number
+} | null>(null)
+const credits = ref<{
+  balance: string
+  totalRecharged: string
+  provisioned: boolean
+  syncStatus: string
 } | null>(null)
 
 const username = computed(() => accountProfile.uid)
@@ -37,9 +53,31 @@ const nickname = computed(() => accountProfile.nickname)
 const avatar = computed(() => accountProfile.avatarUrl || defaultAvatar)
 const loadingProfile = computed(() => accountProfile.loading)
 const displayName = computed(() => accountProfile.nickname || accountProfile.uid || 'ZTools 用户')
+const rechargeStatusText = computed(() => {
+  switch (rechargeOrder.value?.status) {
+    case 'crediting':
+      return '支付成功，积分入账中'
+    case 'paid_pending_credit':
+      return '支付成功，正在重试入账'
+    case 'credited':
+      return '积分已到账'
+    case 'amount_mismatch':
+      return '支付金额异常，请联系客服'
+    case 'failed':
+      return '赞助处理失败，请联系客服'
+    case 'expired':
+      return '订单已过期'
+    default:
+      return '等待支付'
+  }
+})
 
 onMounted(() => {
   void loadAccount()
+})
+
+onBeforeUnmount(() => {
+  stopRechargePolling()
 })
 
 /**
@@ -54,11 +92,165 @@ async function loadAccount(): Promise<void> {
       await router.replace({ name: 'GeneralSetting' })
       return
     }
-    await loadCloudStats()
+    await Promise.all([loadCloudStats(), loadCredits()])
   } catch (err: unknown) {
     console.error('加载个人中心失败:', err)
     error('加载个人中心失败')
   }
+}
+
+/**
+ * 加载当前账号的官方 AI 积分余额。
+ * @returns 积分加载完成后结束的 Promise
+ */
+async function loadCredits(): Promise<void> {
+  loadingCredits.value = true
+  try {
+    const result = await window.ztools.internal.syncGetAccountCredits()
+    credits.value = result.success && result.credits ? result.credits : null
+  } finally {
+    loadingCredits.value = false
+  }
+}
+
+/**
+ * 打开充值弹窗并恢复默认金额和初始状态。
+ * @returns 无返回值
+ */
+function openRechargeDialog(): void {
+  stopRechargePolling()
+  rechargeAmount.value = '10'
+  rechargeOrder.value = null
+  rechargePaymentWindowClosed.value = false
+  showRechargeDialog.value = true
+}
+
+/**
+ * 使用一个预设金额更新充值输入。
+ * @param amount 人民币金额文本
+ * @returns 无返回值
+ */
+function selectRechargeAmount(amount: string): void {
+  rechargeAmount.value = amount
+}
+
+/**
+ * 校验金额、创建服务端订单并使用默认浏览器打开爱发电支付页面。
+ * @returns 订单创建与支付页面打开完成后结束的 Promise
+ */
+async function createRechargeOrder(): Promise<void> {
+  const amount = rechargeAmount.value.trim()
+  if (
+    !/^(?:[1-9]\d{0,3}|10000)(?:\.\d{1,2})?$/.test(amount) ||
+    Number(amount) < 5 ||
+    Number(amount) > 10000
+  ) {
+    warning('赞助金额须为 5 至 10000 元，最多两位小数')
+    return
+  }
+  try {
+    creatingRechargeOrder.value = true
+    const created = await window.ztools.internal.syncCreateAIRechargeOrder(amount)
+    if (!created.success || !created.order?.paymentUrl) {
+      throw new Error(created.error || '创建赞助订单失败')
+    }
+    rechargeOrder.value = created.order
+    rechargePaymentWindowClosed.value = false
+    startRechargePolling(created.order.id)
+    const opened = await window.ztools.internal.syncOpenAIRechargeURL(created.order.paymentUrl)
+    if (!opened.success) throw new Error(opened.error || '打开支付页面失败')
+  } catch (err: unknown) {
+    error(err instanceof Error ? err.message : '创建赞助订单失败')
+  } finally {
+    creatingRechargeOrder.value = false
+  }
+}
+
+/**
+ * 在独立支付窗口中重新打开当前订单对应的爱发电支付页面。
+ * @returns 支付页面打开完成后结束的 Promise
+ */
+async function reopenRechargePage(): Promise<void> {
+  const paymentUrl = rechargeOrder.value?.paymentUrl
+  if (!paymentUrl) return
+  const result = await window.ztools.internal.syncOpenAIRechargeURL(paymentUrl)
+  if (!result.success) error(result.error || '打开支付页面失败')
+}
+
+/**
+ * 启动单订单轮询，并先立即读取一次状态。
+ * @param orderId 服务端充值订单编号
+ * @returns 无返回值
+ */
+function startRechargePolling(orderId: string): void {
+  stopRechargePolling()
+  void pollRechargeStatus(orderId)
+  rechargePollTimer = setInterval(() => void pollRechargeStatus(orderId), 2500)
+}
+
+/**
+ * 查询订单状态并在到账或终态时停止轮询。
+ * @param orderId 服务端充值订单编号
+ * @returns 本次状态查询完成后结束的 Promise
+ */
+async function pollRechargeStatus(orderId: string): Promise<void> {
+  if (pollingRechargeOrder.value) return
+  pollingRechargeOrder.value = true
+  try {
+    const result = await window.ztools.internal.syncGetAIRechargeOrder(orderId)
+    if (!result.success || !result.order) throw new Error(result.error || '查询赞助状态失败')
+    // 查询接口不重复下发支付链接，保留创建订单时得到的可信链接供用户重新打开。
+    rechargeOrder.value = {
+      ...result.order,
+      paymentUrl: rechargeOrder.value?.paymentUrl
+    }
+    const paymentConfirmed = ['crediting', 'paid_pending_credit', 'credited'].includes(
+      result.order.status
+    )
+    if (paymentConfirmed && !rechargePaymentWindowClosed.value) {
+      const closed = await window.ztools.internal.syncCloseAIRechargeWindow()
+      if (closed.success) {
+        rechargePaymentWindowClosed.value = true
+      } else {
+        console.warn('关闭赞助窗口失败:', closed.error)
+      }
+    }
+    if (result.order.status === 'credited') {
+      stopRechargePolling()
+      showRechargeDialog.value = false
+      await loadCredits()
+      success(`${result.order.creditAmount} 积分已到账`)
+      return
+    }
+    if (['amount_mismatch', 'failed', 'expired'].includes(result.order.status)) {
+      stopRechargePolling()
+      error(rechargeStatusText.value)
+    }
+  } catch (err: unknown) {
+    // 临时网络错误保留轮询，用户无需重新发起已经支付的订单。
+    console.error('查询赞助状态失败:', err)
+  } finally {
+    pollingRechargeOrder.value = false
+  }
+}
+
+/**
+ * 停止当前充值订单的状态轮询。
+ * @returns 无返回值
+ */
+function stopRechargePolling(): void {
+  if (rechargePollTimer) clearInterval(rechargePollTimer)
+  rechargePollTimer = null
+}
+
+/**
+ * 关闭充值弹窗并清理当前轮询。
+ * @returns 无返回值
+ */
+function closeRechargeDialog(): void {
+  if (creatingRechargeOrder.value) return
+  showRechargeDialog.value = false
+  stopRechargePolling()
 }
 
 /**
@@ -393,6 +585,22 @@ function formatBytes(value?: number): string {
       </section>
 
       <section class="usage-section">
+        <h2>AI 积分</h2>
+        <div class="ai-credit-card">
+          <div class="ai-credit-balance">
+            <span>可用积分</span>
+            <strong>{{ loadingCredits ? '加载中' : credits?.balance || '0' }}</strong>
+          </div>
+          <div class="ai-credit-meta">
+            <span>1 元 = 1 积分</span>
+            <button type="button" class="btn-primary recharge-button" @click="openRechargeDialog">
+              赞助送积分
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="usage-section">
         <h2>云同步用量</h2>
         <div class="stats-grid">
           <div class="stat-item">
@@ -435,6 +643,76 @@ function formatBytes(value?: number): string {
       </footer>
     </div>
   </div>
+
+  <BaseDialog
+    v-model:visible="showRechargeDialog"
+    title="赞助送积分"
+    subtitle="每赞助 1 元赠送 1 积分"
+    max-width="440px"
+    :close-on-overlay="!creatingRechargeOrder"
+    @close="closeRechargeDialog"
+  >
+    <div v-if="!rechargeOrder" class="recharge-form">
+      <div class="recharge-presets" aria-label="赞助金额">
+        <button
+          v-for="amount in rechargePresets"
+          :key="amount"
+          type="button"
+          :class="{ active: rechargeAmount === amount }"
+          @click="selectRechargeAmount(amount)"
+        >
+          {{ amount }} 元
+        </button>
+      </div>
+      <label class="recharge-custom-field">
+        <span>自定义金额</span>
+        <div>
+          <input
+            v-model="rechargeAmount"
+            type="text"
+            inputmode="decimal"
+            maxlength="8"
+            placeholder="5 - 10000"
+            @keyup.enter="createRechargeOrder"
+          />
+          <span>元</span>
+        </div>
+      </label>
+      <div class="recharge-actions">
+        <button
+          type="button"
+          class="btn-secondary btn-action"
+          :disabled="creatingRechargeOrder"
+          @click="closeRechargeDialog"
+        >
+          取消
+        </button>
+        <button
+          type="button"
+          class="btn-primary btn-action"
+          :disabled="creatingRechargeOrder"
+          @click="createRechargeOrder"
+        >
+          {{ creatingRechargeOrder ? '创建中...' : '前往支付' }}
+        </button>
+      </div>
+    </div>
+    <div v-else class="recharge-waiting">
+      <div>
+        <span>赞助金额</span>
+        <strong>{{ rechargeOrder.amount }} 元</strong>
+      </div>
+      <p>{{ rechargeStatusText }}</p>
+      <div class="recharge-actions">
+        <button type="button" class="btn-secondary btn-action" @click="closeRechargeDialog">
+          稍后查看
+        </button>
+        <button type="button" class="btn-primary btn-action" @click="reopenRechargePage">
+          重新打开支付页
+        </button>
+      </div>
+    </div>
+  </BaseDialog>
 
   <BaseDialog
     v-model:visible="showPasswordDialog"
@@ -505,6 +783,136 @@ function formatBytes(value?: number): string {
 .account-page {
   width: min(100%, 820px);
   margin: 0 auto;
+}
+
+.ai-credit-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 35%, var(--divider-color));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--card-bg));
+}
+
+.ai-credit-card > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.ai-credit-card span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ai-credit-card strong {
+  color: var(--primary-color);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.ai-credit-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.recharge-button {
+  min-width: 72px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.recharge-form,
+.recharge-waiting {
+  display: grid;
+  gap: 18px;
+}
+
+.recharge-presets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.recharge-presets button {
+  min-width: 0;
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+  padding: 9px 4px;
+  background: var(--control-bg);
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.recharge-presets button.active {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.recharge-custom-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.recharge-custom-field > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.recharge-custom-field input {
+  min-width: 0;
+  flex: 1;
+  box-sizing: border-box;
+  border: 1px solid var(--divider-color);
+  border-radius: 6px;
+  outline: none;
+  padding: 9px 10px;
+  background: var(--control-bg);
+  color: var(--text-color);
+  font-size: 14px;
+}
+
+.recharge-custom-field input:focus {
+  border-color: var(--primary-color);
+}
+
+.recharge-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.recharge-waiting > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.recharge-waiting strong {
+  color: var(--text-color);
+  font-size: 20px;
+}
+
+.recharge-waiting p {
+  margin: 0;
+  border-top: 1px solid var(--divider-color);
+  border-bottom: 1px solid var(--divider-color);
+  padding: 14px 0;
+  color: var(--primary-color);
+  font-size: 13px;
+  text-align: center;
 }
 
 .loading-state {
@@ -771,6 +1179,19 @@ function formatBytes(value?: number): string {
 }
 
 @media (max-width: 760px) {
+  .ai-credit-card {
+    align-items: flex-start;
+  }
+
+  .ai-credit-meta {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
+  .recharge-presets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .stats-grid {
     grid-template-columns: 1fr;
   }

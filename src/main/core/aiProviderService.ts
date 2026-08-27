@@ -320,7 +320,10 @@ class AiProviderService {
             contextWindow: capabilities.contextWindow,
             inputModalities: [...capabilities.inputModalities],
             // 协议映射由宿主持有，插件只获得当前模型可选择的标准档位。
-            ...(reasoning === undefined ? {} : { reasoning })
+            ...(reasoning === undefined ? {} : { reasoning }),
+            ...(capabilities.temperature === undefined
+              ? {}
+              : { temperature: capabilities.temperature })
           }
         })
       )

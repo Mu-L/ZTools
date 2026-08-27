@@ -104,6 +104,23 @@ function normalizeTemperature(value: number | undefined, maximum: number): numbe
 }
 
 /**
+ * 根据模型能力解析本次请求的温度；模型未声明能力时不发送该字段。
+ * @param value 插件请求的温度
+ * @param capability 宿主声明的模型温度能力
+ * @returns 上游可接受的温度，或不发送时的 undefined
+ */
+function resolveModelTemperature(
+  value: number | undefined,
+  capability: AiChatProtocolInput['modelTemperature']
+): number | undefined {
+  if (!capability) return undefined
+  if (capability.mode === 'fixed') return capability.value
+  const requested = normalizeTemperature(value, capability.max)
+  const candidate = requested ?? capability.default
+  return Math.min(capability.max, Math.max(capability.min, candidate))
+}
+
+/**
  * 规范化插件提交的最大输出 token 数。
  * @param value 插件提交的 token 上限
  * @param fallback 缺省时使用的协议默认值
@@ -385,7 +402,7 @@ class OpenAiChatAdapter implements AiProtocolAdapter {
    */
   public async complete(input: AdapterInput, signal: AbortSignal): Promise<AssistantTurn> {
     const tools = convertChatTools(input.tools)
-    const temperature = normalizeTemperature(input.temperature, 2) ?? 0.2
+    const temperature = resolveModelTemperature(input.temperature, input.modelTemperature)
     const maxTokens = normalizeMaxTokens(input.maxTokens)
     const reasoning = resolveAiReasoningPolicy(
       input.model,
@@ -433,7 +450,7 @@ class OpenAiChatAdapter implements AiProtocolAdapter {
     onDelta: (delta: AdapterDelta) => void
   ): Promise<AssistantTurn> {
     const tools = convertChatTools(input.tools)
-    const temperature = normalizeTemperature(input.temperature, 2) ?? 0.2
+    const temperature = resolveModelTemperature(input.temperature, input.modelTemperature)
     const maxTokens = normalizeMaxTokens(input.maxTokens)
     const reasoning = resolveAiReasoningPolicy(
       input.model,
@@ -559,7 +576,7 @@ class OpenAiResponsesAdapter implements AiProtocolAdapter {
    */
   public async complete(input: AdapterInput, signal: AbortSignal): Promise<AssistantTurn> {
     const tools = toResponsesTools(input.tools)
-    const temperature = normalizeTemperature(input.temperature, 2)
+    const temperature = resolveModelTemperature(input.temperature, input.modelTemperature)
     const maxOutputTokens = normalizeMaxTokens(input.maxTokens)
     const context = createReplayContext(this.provider, input.model)
     const reasoning = buildResponsesReasoning(input)
@@ -600,7 +617,7 @@ class OpenAiResponsesAdapter implements AiProtocolAdapter {
     onDelta: (delta: AdapterDelta) => void
   ): Promise<AssistantTurn> {
     const tools = toResponsesTools(input.tools)
-    const temperature = normalizeTemperature(input.temperature, 2)
+    const temperature = resolveModelTemperature(input.temperature, input.modelTemperature)
     const maxOutputTokens = normalizeMaxTokens(input.maxTokens)
     const context = createReplayContext(this.provider, input.model)
     const reasoning = buildResponsesReasoning(input)
@@ -748,7 +765,7 @@ class AnthropicMessagesAdapter implements AiProtocolAdapter {
   private buildBody(input: AdapterInput, stream: boolean): Record<string, unknown> {
     const context = createReplayContext(this.provider, input.model)
     const { system, messages } = toAnthropicMessages(input.messages, context)
-    const temperature = normalizeTemperature(input.temperature, 1)
+    const temperature = resolveModelTemperature(input.temperature, input.modelTemperature)
     const maxTokens = normalizeMaxTokens(input.maxTokens, ANTHROPIC_DEFAULT_MAX_TOKENS)!
     const thinking = buildAnthropicThinking(input, maxTokens)
     // 强制工具选择与 extended thinking 在 Anthropic 协议中互斥，提前返回稳定错误。

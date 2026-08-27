@@ -6,6 +6,9 @@ import type {
   AiProviderInput,
   AiProviderMutationResult,
   AiProviderStore,
+  OfficialAiProviderStatus,
+  OfficialAiCreditAccount,
+  OfficialAiRechargeOrder,
   AiRemoteModel
 } from '@shared/aiProviderShared'
 
@@ -731,6 +734,29 @@ declare global {
           }
           error?: string
         }>
+        syncGetAccountCredits: () => Promise<{
+          success: boolean
+          credits?: OfficialAiCreditAccount
+          error?: string
+        }>
+        syncCreateAIRechargeOrder: (amount: string) => Promise<{
+          success: boolean
+          order?: OfficialAiRechargeOrder
+          error?: string
+        }>
+        syncGetAIRechargeOrder: (orderId: string) => Promise<{
+          success: boolean
+          order?: OfficialAiRechargeOrder
+          error?: string
+        }>
+        syncOpenAIRechargeURL: (paymentUrl: string) => Promise<{
+          success: boolean
+          error?: string
+        }>
+        syncCloseAIRechargeWindow: () => Promise<{
+          success: boolean
+          error?: string
+        }>
         syncGetAccountProfile: () => Promise<{
           success: boolean
           profile?: {
@@ -813,6 +839,11 @@ declare global {
         // AI 供应商管理
         aiProviders: {
           getAll: () => Promise<{ success: boolean; data?: AiProviderStore; error?: string }>
+          getOfficial: () => Promise<{
+            success: boolean
+            data?: OfficialAiProviderStatus
+            error?: string
+          }>
           add: (provider: AiProviderInput) => Promise<AiProviderMutationResult>
           update: (provider: AiProviderInput) => Promise<AiProviderMutationResult>
           delete: (providerId: string) => Promise<AiProviderMutationResult>
