@@ -1,8 +1,10 @@
-# 3.2.0-beta.2
+# 3.2.0-beta.3
 
 ## 新功能 (Feat)
 
 - 插件市场添加排行榜
+- AI 模型编辑界面优化，支持直接使用 ZTools 官方模型
+- 搜索框支持将 Tab 按键事件传递给插件（PR [#657](../../pull/657)，感谢 [@guopenghui](https://github.com/guopenghui) 的贡献 🎉）
 - 通用设置新增「紧凑顶部栏」，缩小主搜索框和插件顶部栏以显示更多内容
 - 通用设置新增「插件内 ESC 直接隐藏」，在插件中按 ESC 可直接隐藏主窗口，并在下次唤出时返回搜索
 - 更新窗口支持最小化，并保留当前更新状态（PR [#627](../../pull/627)，感谢 [@Hillindigo](https://github.com/Hillindigo) 的贡献 🎉）
@@ -16,6 +18,7 @@
 
 ## 修复 (Fix)
 
+- 修复 Windows 下唤出搜索窗口时偶发抖动的问题（PR [#654](../../pull/654)，感谢 [@guopenghui](https://github.com/guopenghui) 的贡献 🎉）
 - 修复 Windows 上部分系统 EXE 无法通过本地启动项打开的问题（PR [#653](../../pull/653)，感谢 [@guopenghui](https://github.com/guopenghui) 的贡献 🎉）
 - 修改登录用户昵称和头像后其他电脑进入未刷新
 - 更新窗口链接暗色显示问题、链接跳转问题
