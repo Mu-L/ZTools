@@ -1,4 +1,4 @@
-# 3.2.0-beta.3
+# 3.2.0-beta.4
 
 ## 新功能 (Feat)
 
@@ -15,6 +15,7 @@
 - 内置截图支持通过 `autoConfirm=false` 进入编辑态，并返回截图图像和区域信息（PR [#631](../../pull/631)，感谢 [@Particaly](https://github.com/Particaly) 的贡献 🎉）
 - 新增 `ztools.startDrag` 插件 API，支持将单个或多个文件拖动到外部应用（PR [#649](../../pull/649)，感谢 [@guopenghui](https://github.com/guopenghui) 的贡献 🎉）
 - 新增 `ztools.getPath('pluginData')` 插件 API，为每个插件提供自动创建的专属数据目录；清空插件数据或卸载时可一并清理（PR [#650](../../pull/650)，感谢 [@Particaly](https://github.com/Particaly) 的贡献 🎉）
+- Windows 支持长截图
 
 ## 修复 (Fix)
 

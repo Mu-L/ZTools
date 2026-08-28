@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useToast } from '@/components'
+import { ACCOUNT_CHANGED_EVENT } from '@/composables/useZToolsAccount'
 import { weightedSearch } from '@/utils'
-import { AiProviderEditor } from './components'
+import { AiProviderEditor, OfficialAiCredits } from './components'
 import { useZtoolsSubInput } from '@/composables'
 import type {
   AiProvider,
@@ -22,6 +23,7 @@ const editingProvider = ref<AiProvider | null>(null)
 const officialProvider = ref<OfficialAiProviderStatus | null>(null)
 const officialError = ref('')
 const officialModelsExpanded = ref(false)
+let officialProviderRequestId = 0
 const { value: searchQuery } = useZtoolsSubInput('', '搜索 AI 供应商或模型...')
 
 const filteredProviders = computed(() =>
@@ -42,21 +44,14 @@ const filteredProviders = computed(() =>
 async function loadProviders(): Promise<void> {
   loading.value = true
   try {
-    const [result, officialResult] = await Promise.all([
+    const [result] = await Promise.all([
       window.ztools.internal.aiProviders.getAll(),
-      window.ztools.internal.aiProviders.getOfficial()
+      loadOfficialProvider()
     ])
     if (result.success && result.data) {
       store.value = result.data
     } else {
       error(result.error || '加载 AI 供应商失败')
-    }
-    if (officialResult.success && officialResult.data) {
-      officialProvider.value = officialResult.data
-      officialError.value = ''
-    } else {
-      officialProvider.value = null
-      officialError.value = officialResult.error || '官方模型暂不可用'
     }
   } catch (cause) {
     console.error('加载 AI 供应商失败:', cause)
@@ -64,6 +59,39 @@ async function loadProviders(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 从主进程刷新官方模型及当前账号登录状态。
+ * @returns 官方模型状态刷新完成后结束的 Promise
+ */
+async function loadOfficialProvider(): Promise<void> {
+  const requestId = ++officialProviderRequestId
+  try {
+    const result = await window.ztools.internal.aiProviders.getOfficial()
+    // 账号快速切换时只允许最后一次请求更新页面状态。
+    if (requestId !== officialProviderRequestId) return
+    if (result.success && result.data) {
+      officialProvider.value = result.data
+      officialError.value = ''
+    } else {
+      officialProvider.value = null
+      officialError.value = result.error || '官方模型暂不可用'
+    }
+  } catch (cause) {
+    if (requestId !== officialProviderRequestId) return
+    console.error('加载 ZTools 官方模型失败:', cause)
+    officialProvider.value = null
+    officialError.value = '官方模型暂不可用'
+  }
+}
+
+/**
+ * 响应登录、退出或账号切换并刷新官方模型可用状态。
+ * @returns 无返回值
+ */
+function handleAccountChanged(): void {
+  void loadOfficialProvider()
 }
 
 /**
@@ -208,17 +236,37 @@ function formatLabel(apiFormat: AiProvider['apiFormat']): string {
   )
 }
 
+/**
+ * 读取官方模型可展示的图标地址。
+ * @param model 官方模型目录项
+ * @returns 去除首尾空白后的图标地址
+ */
 function officialModelIcon(model: OfficialAiModel): string {
   return model.icon?.trim() || ''
 }
 
+/**
+ * 将上下文窗口 token 数格式化为紧凑文本。
+ * @param value 上下文窗口 token 数
+ * @returns 使用 K 或 M 单位的上下文窗口文本
+ */
 function formatContextWindow(value: number): string {
   if (value >= 1_048_576 && value % 1_048_576 === 0) return `${value / 1_048_576}M`
   if (value >= 1024 && value % 1024 === 0) return `${value / 1024}K`
   return `${Math.round(value / 1024)}K`
 }
 
-onMounted(loadProviders)
+onMounted(() => {
+  // 先订阅账号变化，避免首次加载期间完成登录时漏掉刷新事件。
+  window.addEventListener(ACCOUNT_CHANGED_EVENT, handleAccountChanged)
+  void loadProviders()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(ACCOUNT_CHANGED_EVENT, handleAccountChanged)
+  // 使卸载前仍在执行的请求失效，禁止回写已销毁页面。
+  officialProviderRequestId += 1
+})
 </script>
 
 <template>
@@ -248,11 +296,8 @@ onMounted(loadProviders)
                 </div>
               </div>
               <div class="official-status-chips">
-                <span class="official-login-status" :class="{ active: officialProvider.loggedIn }">
-                  {{
-                    officialProvider.loggedIn ? '已登录，可供插件调用' : '登录 ZTools 账号后可调用'
-                  }}
-                </span>
+                <OfficialAiCredits v-if="officialProvider.loggedIn" />
+                <span v-else class="official-login-status"> 登录 ZTools 账号后可调用 </span>
               </div>
             </header>
             <div class="official-model-table-wrap">
@@ -519,10 +564,6 @@ onMounted(loadProviders)
 .official-login-status {
   color: var(--text-secondary);
   font-size: 12px;
-}
-
-.official-login-status.active {
-  color: var(--success-color, #16a34a);
 }
 
 .official-status-chips {
