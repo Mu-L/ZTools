@@ -226,12 +226,12 @@ Content-Type: application/json
 
 **入参**
 
-| 字段         | 类型     | 必填 | 说明                                                                          |
-| ------------ | -------- | ---- | ----------------------------------------------------------------------------- |
-| `pluginName` | `string` | 是   | 插件 `plugin.json` 中的 `name`                                                |
-| `code`       | `string` | 是   | 要启动的插件功能 code                                                         |
-| `type`       | `string` | 否   | 启动类型，支持 `text`、`over`、`regex`、`img`、`files`、`window`，默认 `text` |
-| `payload`    | `any`    | 否   | 传给插件的内容，与手动启动插件时的 `payload` 含义一致                         |
+| 字段         | 类型     | 必填 | 说明                                                                                   |
+| ------------ | -------- | ---- | -------------------------------------------------------------------------------------- |
+| `pluginName` | `string` | 是   | 插件 `plugin.json` 中的 `name`                                                         |
+| `code`       | `string` | 是   | 要启动的插件功能 code                                                                  |
+| `type`       | `string` | 否   | 启动类型，支持 `text`、`over`、`regex`、`img`、`files`、`window`，默认 `text`          |
+| `payload`    | `any`    | 否   | 传给插件的内容，与手动启动插件时的 `payload` 含义一致；`type=files` 时可传文件路径数组 |
 
 **请求体示例**
 
@@ -241,6 +241,17 @@ Content-Type: application/json
   "code": "open",
   "type": "text",
   "payload": "来自 HTTP API 的内容"
+}
+```
+
+文件类型插件也可以传文件路径数组，ZTools 会转换为手动启动插件时一致的文件对象数组。
+
+```json
+{
+  "pluginName": "demo-plugin",
+  "code": "open-files",
+  "type": "files",
+  "payload": ["/Users/me/Desktop/a.txt", "/Users/me/Desktop/images"]
 }
 ```
 

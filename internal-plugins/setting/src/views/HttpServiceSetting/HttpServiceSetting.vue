@@ -41,7 +41,7 @@ const apiEndpoints: ApiEndpoint[] = [
   {
     method: 'POST',
     path: '/api/plugin/launch',
-    desc: '启动插件，支持传参。pluginName 对应 plugin.json 中的 name，code 和 type（text、over 等）也保持和 plugin.json 一致',
+    desc: '启动插件，支持传参。pluginName 对应 plugin.json 中的 name，code 和 type（text、over 等）也保持和 plugin.json 一致。type=files 时 payload 可传文件路径数组',
     auth: true,
     body: {
       pluginName: '插件名称',

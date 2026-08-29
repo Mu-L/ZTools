@@ -23,7 +23,11 @@ interface PluginLaunchOptions {
   path: string
   type: 'plugin'
   featureCode?: string
-  param?: Record<string, unknown>
+  param?: {
+    payload?: unknown
+    type: string
+    code: string
+  }
   name?: string
   cmdType?: string
 }
@@ -33,6 +37,13 @@ type PluginLauncher = (options: PluginLaunchOptions) => Promise<{
   error?: string
   [key: string]: unknown
 }>
+
+interface PluginLaunchFile {
+  path: string
+  name: string
+  isDirectory: boolean
+  isFile: boolean
+}
 
 const PLUGIN_COMMAND_TYPES = ['text', 'over', 'regex', 'img', 'files', 'window']
 const DB_KEY = 'settings-http-server'
@@ -334,6 +345,70 @@ class HttpServer {
   }
 
   /**
+   * 将 HTTP 文件 payload 转成手动启动文件插件时一致的文件对象列表。
+   * @param payload HTTP 请求中的 payload，支持路径字符串数组或文件对象数组。
+   * @returns 标准文件 payload 列表。
+   * @throws payload 结构不符合 files 类型要求时抛错。
+   */
+  private normalizeFilesPayload(payload: unknown): PluginLaunchFile[] {
+    if (!Array.isArray(payload)) {
+      throw new Error('files 类型的 payload 必须是文件数组')
+    }
+
+    return payload.map((item) => {
+      const filePath =
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object' && typeof (item as any).path === 'string'
+            ? (item as any).path
+            : ''
+
+      if (!filePath) {
+        throw new Error('files 类型的 payload 每一项都必须包含文件路径')
+      }
+
+      let isDirectory = false
+      try {
+        // 尽量补全目录信息，让插件收到的结构与手动文件启动保持一致。
+        isDirectory = fsSync.statSync(filePath).isDirectory()
+      } catch {
+        isDirectory =
+          typeof item === 'object' && item !== null ? Boolean((item as any).isDirectory) : false
+      }
+
+      const name =
+        typeof item === 'object' && item !== null && typeof (item as any).name === 'string'
+          ? (item as any).name
+          : path.basename(filePath)
+
+      return {
+        path: filePath,
+        name,
+        isDirectory,
+        isFile:
+          typeof item === 'object' && item !== null && typeof (item as any).isFile === 'boolean'
+            ? (item as any).isFile
+            : !isDirectory
+      }
+    })
+  }
+
+  /**
+   * 解析并规范化 HTTP 插件启动 payload。
+   * @param commandType 插件启动类型。
+   * @param payload HTTP 请求中的原始 payload。
+   * @returns 与手动启动插件一致的 payload。
+   * @throws payload 与启动类型不匹配时抛错。
+   */
+  private normalizePluginLaunchPayload(commandType: string, payload: unknown): unknown {
+    if (commandType === 'files') {
+      return this.normalizeFilesPayload(payload)
+    }
+
+    return payload
+  }
+
+  /**
    * 通过 HTTP 请求启动已安装插件，并将请求参数传给插件。
    * @param body 已解析的 JSON 请求体，必须包含 pluginName 和 code。
    * @returns 插件启动结果。
@@ -374,12 +449,22 @@ class HttpServer {
         }
       }
 
+      let payload: unknown
+      try {
+        payload = this.normalizePluginLaunchPayload(commandType, body.payload)
+      } catch (error) {
+        return {
+          code: 400,
+          message: error instanceof Error ? error.message : '插件启动 payload 无效'
+        }
+      }
+
       const result = await this.pluginLauncher({
         path: plugin.path,
         type: 'plugin',
         featureCode,
         param: {
-          payload: body.payload,
+          payload,
           type: commandType,
           code: featureCode
         },
