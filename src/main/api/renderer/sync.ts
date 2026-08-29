@@ -693,6 +693,28 @@ export class SyncAPI {
       }
     })
 
+    ipcMain.handle('sync:get-ai-checkin-status', async () => {
+      try {
+        return { success: true, checkin: await officialAIService.getCheckinStatus() }
+      } catch (error: unknown) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '获取签到状态失败'
+        }
+      }
+    })
+
+    ipcMain.handle('sync:ai-checkin', async () => {
+      try {
+        return { success: true, checkin: await officialAIService.checkin() }
+      } catch (error: unknown) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : '签到失败'
+        }
+      }
+    })
+
     ipcMain.handle('sync:create-ai-recharge-order', async (_event, amount: string) => {
       try {
         return { success: true, order: await officialAIService.createRechargeOrder(amount) }

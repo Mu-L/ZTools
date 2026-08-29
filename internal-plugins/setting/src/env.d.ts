@@ -739,6 +739,16 @@ declare global {
           credits?: OfficialAiCreditAccount
           error?: string
         }>
+        syncGetAICheckinStatus: () => Promise<{
+          success: boolean
+          checkin?: import('@shared/aiProviderShared').OfficialAiCheckinStatus
+          error?: string
+        }>
+        syncAICheckin: () => Promise<{
+          success: boolean
+          checkin?: import('@shared/aiProviderShared').OfficialAiCheckinStatus
+          error?: string
+        }>
         syncCreateAIRechargeOrder: (amount: string) => Promise<{
           success: boolean
           order?: OfficialAiRechargeOrder

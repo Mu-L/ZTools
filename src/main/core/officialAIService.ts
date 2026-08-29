@@ -16,6 +16,7 @@ import {
   type OfficialAiModelCatalog,
   type OfficialAiProviderStatus,
   type OfficialAiCreditAccount,
+  type OfficialAiCheckinStatus,
   type OfficialAiRechargeOrder
 } from '../../shared/aiProviderShared.js'
 
@@ -171,6 +172,34 @@ class OfficialAIService {
       '/api/account/credits',
       { method: 'GET' },
       '获取 AI 积分失败'
+    )
+  }
+
+  /**
+   * 获取当前账号今天的官方 AI 签到状态和活动配置。
+   * @returns Server 按北京时间计算的签到状态
+   * @throws 未登录、刷新失败或服务端拒绝请求时抛出错误
+   */
+  public async getCheckinStatus(): Promise<OfficialAiCheckinStatus> {
+    if (process.env.ZTOOLS_E2E === '1') return this.e2eCheckinStatus(false)
+    return this.requestAuthenticated<OfficialAiCheckinStatus>(
+      '/api/account/credits/check-in',
+      { method: 'GET' },
+      '获取签到状态失败'
+    )
+  }
+
+  /**
+   * 为当前账号执行今天的官方 AI 签到。
+   * @returns 最新签到状态及到账后的积分余额
+   * @throws 未登录、活动不可用或服务端签到失败时抛出错误
+   */
+  public async checkin(): Promise<OfficialAiCheckinStatus> {
+    if (process.env.ZTOOLS_E2E === '1') return this.e2eCheckinStatus(true)
+    return this.requestAuthenticated<OfficialAiCheckinStatus>(
+      '/api/account/credits/check-in',
+      { method: 'POST' },
+      '签到失败'
     )
   }
 
@@ -402,6 +431,32 @@ class OfficialAIService {
       creditedAt: status === 'credited' ? now : undefined,
       createdAt: now,
       updatedAt: now
+    }
+  }
+
+  /**
+   * 返回完全隔离于线上服务的 E2E 每日签到状态。
+   * @param checkedIn 是否模拟已经完成签到
+   * @returns E2E 固定签到活动和状态
+   */
+  private e2eCheckinStatus(checkedIn: boolean): OfficialAiCheckinStatus {
+    return {
+      available: true,
+      serverDate: '2026-08-28',
+      campaign: {
+        id: 1,
+        name: '每日签到',
+        rewardAmount: '1',
+        startDate: '2026-08-01',
+        endDate: '2026-09-30',
+        enabled: true,
+        status: 'active'
+      },
+      checkedIn,
+      status: checkedIn ? 'credited' : undefined,
+      rewardAmount: checkedIn ? '1' : undefined,
+      creditedAt: checkedIn ? Date.now() : undefined,
+      balance: checkedIn ? '129' : undefined
     }
   }
 }

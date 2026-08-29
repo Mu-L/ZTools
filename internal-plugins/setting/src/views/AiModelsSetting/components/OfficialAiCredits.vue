@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { BaseDialog, useToast } from '@/components'
-import type { OfficialAiCreditAccount, OfficialAiRechargeOrder } from '@shared/aiProviderShared'
+import type {
+  OfficialAiCheckinStatus,
+  OfficialAiCreditAccount,
+  OfficialAiRechargeOrder
+} from '@shared/aiProviderShared'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const { success, error, warning } = useToast()
 const loadingCredits = ref(true)
 const credits = ref<OfficialAiCreditAccount | null>(null)
+const loadingCheckin = ref(true)
+const checkingIn = ref(false)
+const checkin = ref<OfficialAiCheckinStatus | null>(null)
 const showRechargeDialog = ref(false)
 const rechargeAmount = ref('10')
 const creatingRechargeOrder = ref(false)
@@ -39,13 +46,13 @@ const rechargeStatusText = computed(() => {
 })
 
 /**
- * 将服务端积分余额格式化为固定两位小数。
- * @param value 服务端返回的积分余额文本
- * @returns 固定保留两位小数的积分余额
+ * 将服务端积分数值格式化为固定两位小数。
+ * @param value 服务端返回的积分数值文本
+ * @returns 固定保留两位小数的积分文本
  */
-function formatCreditBalance(value?: string): string {
-  const balance = Number(value)
-  return Number.isFinite(balance) ? balance.toFixed(2) : '0.00'
+function formatCreditAmount(value?: string): string {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount.toFixed(2) : '0.00'
 }
 
 /**
@@ -53,11 +60,33 @@ function formatCreditBalance(value?: string): string {
  * @returns 加载状态或固定两位小数的积分余额
  */
 const displayCreditBalance = computed(() =>
-  loadingCredits.value ? '加载中' : formatCreditBalance(credits.value?.balance)
+  loadingCredits.value ? '加载中' : formatCreditAmount(credits.value?.balance)
 )
 
+/**
+ * 生成签到入口的紧凑展示文本。
+ * @returns 根据活动和当日状态变化的签到文案
+ */
+const checkinButtonText = computed(() => {
+  if (loadingCheckin.value) return '签到加载中'
+  if (checkingIn.value) return '签到中...'
+  if (checkin.value?.status === 'credited') return '今日已签到'
+  if (checkin.value?.checkedIn) return '积分发放中'
+  return `签到 +${formatCreditAmount(checkin.value?.campaign?.rewardAmount)}积分`
+})
+
+/**
+ * 生成活动有效期和奖励说明。
+ * @returns 可用于按钮悬浮提示的活动说明
+ */
+const checkinTitle = computed(() => {
+  const campaign = checkin.value?.campaign
+  if (!campaign) return '当前没有签到活动'
+  return `每日签到赠送 ${formatCreditAmount(campaign.rewardAmount)} 积分，活动时间：${campaign.startDate} 至 ${campaign.endDate}`
+})
+
 onMounted(() => {
-  void loadCredits()
+  void Promise.all([loadCredits(), loadCheckinStatus()])
 })
 
 onBeforeUnmount(() => {
@@ -78,6 +107,53 @@ async function loadCredits(): Promise<void> {
     credits.value = null
   } finally {
     loadingCredits.value = false
+  }
+}
+
+/**
+ * 加载 Server 按北京时间计算的当前签到活动和当日状态。
+ * @returns 签到状态加载完成后结束的 Promise
+ */
+async function loadCheckinStatus(): Promise<void> {
+  loadingCheckin.value = true
+  try {
+    const result = await window.ztools.internal.syncGetAICheckinStatus()
+    checkin.value = result.success && result.checkin ? result.checkin : null
+  } catch (cause) {
+    console.error('加载官方 AI 签到状态失败:', cause)
+    checkin.value = null
+  } finally {
+    loadingCheckin.value = false
+  }
+}
+
+/**
+ * 执行今日签到，并在积分到账后同步更新头部余额。
+ * @returns 签到请求和余额刷新完成后结束的 Promise
+ */
+async function performCheckin(): Promise<void> {
+  if (!checkin.value?.available || checkin.value.checkedIn || checkingIn.value) return
+  checkingIn.value = true
+  try {
+    const result = await window.ztools.internal.syncAICheckin()
+    if (!result.success || !result.checkin) throw new Error(result.error || '签到失败')
+    checkin.value = result.checkin
+    if (result.checkin.status === 'credited') {
+      if (result.checkin.balance && credits.value) {
+        credits.value = { ...credits.value, balance: result.checkin.balance }
+      } else {
+        await loadCredits()
+      }
+      success(
+        `签到成功，获得 ${formatCreditAmount(result.checkin.rewardAmount || result.checkin.campaign?.rewardAmount)} 积分`
+      )
+    } else {
+      warning('签到成功，积分正在发放中')
+    }
+  } catch (cause) {
+    error(cause instanceof Error ? cause.message : '签到失败')
+  } finally {
+    checkingIn.value = false
   }
 }
 
@@ -229,20 +305,33 @@ function closeRechargeDialog(): void {
 </script>
 
 <template>
-  <div class="official-credit-summary" aria-label="AI 积分余额">
-    <span>余额</span>
-    <span v-if="loadingCredits" class="official-credit-loading">加载中</span>
+  <div class="official-credit-actions">
     <button
-      v-else
+      v-if="checkin?.campaign && (checkin.available || checkin.checkedIn)"
       type="button"
-      class="official-credit-trigger"
-      title="赞助送积分"
-      :aria-label="`AI 积分余额 ${displayCreditBalance}，赞助送积分`"
-      @click="openRechargeDialog"
+      class="official-checkin-trigger"
+      :class="{ completed: checkin.status === 'credited' }"
+      :title="checkinTitle"
+      :disabled="checkingIn || checkin.checkedIn"
+      @click="performCheckin"
     >
-      {{ displayCreditBalance }}
+      {{ checkinButtonText }}
     </button>
-    <span v-if="!loadingCredits">积分</span>
+    <div class="official-credit-summary" aria-label="AI 积分余额">
+      <span>余额</span>
+      <span v-if="loadingCredits" class="official-credit-loading">加载中</span>
+      <button
+        v-else
+        type="button"
+        class="official-credit-trigger"
+        title="赞助送积分"
+        :aria-label="`AI 积分余额 ${displayCreditBalance}，赞助送积分`"
+        @click="openRechargeDialog"
+      >
+        {{ displayCreditBalance }}
+      </button>
+      <span v-if="!loadingCredits">积分</span>
+    </div>
   </div>
 
   <BaseDialog
@@ -317,6 +406,12 @@ function closeRechargeDialog(): void {
 </template>
 
 <style scoped>
+.official-credit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .official-credit-summary {
   display: inline-flex;
   align-items: center;
@@ -324,6 +419,28 @@ function closeRechargeDialog(): void {
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.official-checkin-trigger {
+  border: 1px solid color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.official-checkin-trigger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary-color) 15%, transparent);
+}
+
+.official-checkin-trigger.completed,
+.official-checkin-trigger:disabled {
+  cursor: default;
+  opacity: 0.68;
 }
 
 .official-credit-trigger,

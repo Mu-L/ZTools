@@ -244,6 +244,29 @@ export interface OfficialAiCreditAccount {
   syncStatus: string
 }
 
+/** Server 返回的官方 AI 每日签到活动。 */
+export interface OfficialAiCheckinCampaign {
+  id: number
+  name: string
+  rewardAmount: string
+  startDate: string
+  endDate: string
+  enabled: boolean
+  status: 'active' | 'upcoming' | 'ended' | 'disabled'
+}
+
+/** 当前账号今天的官方 AI 签到状态。 */
+export interface OfficialAiCheckinStatus {
+  available: boolean
+  serverDate: string
+  campaign?: OfficialAiCheckinCampaign
+  checkedIn: boolean
+  status?: 'pending' | 'retry' | 'credited'
+  rewardAmount?: string
+  creditedAt?: number
+  balance?: string
+}
+
 /** 爱发电支付订单在 ZTools 与 Server 之间共享的状态。 */
 export interface OfficialAiRechargeOrder {
   id: string

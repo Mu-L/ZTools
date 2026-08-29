@@ -1319,6 +1319,17 @@ window.ztools = {
     syncGetAccountCredits: async () =>
       await electron.ipcRenderer.invoke('sync:get-account-credits'),
     /**
+     * 获取官方 AI 每日签到状态。
+     * @returns {Promise<unknown>} 签到状态查询结果
+     */
+    syncGetAICheckinStatus: async () =>
+      await electron.ipcRenderer.invoke('sync:get-ai-checkin-status'),
+    /**
+     * 执行当前账号今天的官方 AI 签到。
+     * @returns {Promise<unknown>} 签到执行结果
+     */
+    syncAICheckin: async () => await electron.ipcRenderer.invoke('sync:ai-checkin'),
+    /**
      * 创建官方 AI 积分充值订单。
      * @param {string} amount 人民币充值金额
      * @returns {Promise<unknown>} 订单创建结果

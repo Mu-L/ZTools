@@ -6,6 +6,7 @@ import { weightedSearch } from '@/utils'
 import { AiProviderEditor, OfficialAiCredits } from './components'
 import { useZtoolsSubInput } from '@/composables'
 import type {
+  AiInputModality,
   AiProvider,
   AiProviderInput,
   AiProviderStore,
@@ -246,6 +247,17 @@ function officialModelIcon(model: OfficialAiModel): string {
 }
 
 /**
+ * 判断官方模型是否支持指定输入模态，并为旧目录数据保留文本输入默认值。
+ * @param model 官方模型目录项
+ * @param modality 要检查的输入模态
+ * @returns 模型是否支持该输入模态
+ */
+function officialModelSupportsModality(model: OfficialAiModel, modality: AiInputModality): boolean {
+  const modalities = model.capabilities.inputModalities
+  return modalities?.length ? modalities.includes(modality) : modality === 'text'
+}
+
+/**
  * 将上下文窗口 token 数格式化为紧凑文本。
  * @param value 上下文窗口 token 数
  * @returns 使用 K 或 M 单位的上下文窗口文本
@@ -318,6 +330,7 @@ onBeforeUnmount(() => {
                     <col class="official-model-column-price" />
                     <col class="official-model-column-price" />
                     <col class="official-model-column-cache" />
+                    <col class="official-model-column-modalities" />
                     <col class="official-model-column-reasoning" />
                   </colgroup>
                   <thead>
@@ -327,6 +340,7 @@ onBeforeUnmount(() => {
                       <th scope="col">输入</th>
                       <th scope="col">输出</th>
                       <th scope="col">缓存读取</th>
+                      <th scope="col">模态</th>
                       <th scope="col">思考</th>
                     </tr>
                   </thead>
@@ -354,6 +368,30 @@ onBeforeUnmount(() => {
                       <td>{{ model.pricing?.input || '—' }}</td>
                       <td>{{ model.pricing?.output || '—' }}</td>
                       <td>{{ model.pricing?.cacheRead || '—' }}</td>
+                      <td>
+                        <span
+                          class="official-model-modalities"
+                          role="img"
+                          :aria-label="
+                            officialModelSupportsModality(model, 'image')
+                              ? '支持文本和图片输入'
+                              : '支持文本输入'
+                          "
+                        >
+                          <span
+                            v-if="officialModelSupportsModality(model, 'text')"
+                            class="i-z-text official-model-modality-icon"
+                            title="文本输入"
+                            aria-hidden="true"
+                          />
+                          <span
+                            v-if="officialModelSupportsModality(model, 'image')"
+                            class="i-z-image official-model-modality-icon"
+                            title="图片输入"
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </td>
                       <td>
                         <span v-if="model.capabilities.reasoning.supported">
                           {{
@@ -451,14 +489,19 @@ onBeforeUnmount(() => {
             </div>
           </article>
 
-          <div v-if="!loading && store.providers.length === 0" class="empty-state provider-empty">
+          <div
+            v-if="!loading && !officialProvider && store.providers.length === 0"
+            class="empty-state provider-empty"
+          >
             <div class="i-z-brain empty-icon font-size-64px" />
             <div class="empty-text">暂无 AI 供应商</div>
             <div class="empty-hint">添加供应商后选择需要使用的模型</div>
           </div>
 
           <div
-            v-else-if="!loading && filteredProviders.length === 0"
+            v-else-if="
+              !loading && filteredProviders.length === 0 && (searchQuery || !officialProvider)
+            "
             class="empty-state compact-empty"
           >
             <div class="empty-text">没有匹配的供应商或模型</div>
@@ -629,23 +672,27 @@ onBeforeUnmount(() => {
 }
 
 .official-model-column-name {
-  width: 34%;
+  width: 29%;
 }
 
 .official-model-column-context {
-  width: 12%;
+  width: 11%;
 }
 
 .official-model-column-price {
-  width: 10%;
+  width: 9%;
 }
 
 .official-model-column-cache {
-  width: 15%;
+  width: 13%;
+}
+
+.official-model-column-modalities {
+  width: 11%;
 }
 
 .official-model-column-reasoning {
-  width: 19%;
+  width: 18%;
 }
 
 .official-model-table th,
@@ -745,6 +792,21 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   color: var(--text-secondary);
   font-size: 11px;
+}
+
+.official-model-modalities {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 34px;
+  gap: 5px;
+  color: var(--text-secondary);
+}
+
+.official-model-modality-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .official-model-toggle {
