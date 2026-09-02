@@ -161,7 +161,8 @@ class APIManager {
     // 初始化软件更新API
     updaterAPI.init(mainWindow)
 
-    // 初始化 HTTP 服务
+    // 初始化 HTTP 服务，并复用应用内插件启动入口处理外部插件启动请求。
+    httpServer.setPluginLauncher((options) => this.launchPlugin(options))
     httpServer.init().catch((error) => {
       console.error('[API] HTTP 服务初始化失败:', error)
     })
