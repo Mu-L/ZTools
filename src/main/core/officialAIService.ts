@@ -2,7 +2,7 @@ import {
   loadOfficialAccountSession,
   refreshOfficialAccountTokens
 } from './account/officialAccountService.js'
-import { OFFICIAL_SYNC_SERVER_URL } from '../../shared/syncServerUrl.js'
+import { OFFICIAL_SERVER_HTTP_URL } from '../../shared/syncServerUrl.js'
 import {
   DEFAULT_AI_CONTEXT_WINDOW,
   type AiInputModality,
@@ -39,15 +39,6 @@ function buildOfficialModelPublicId(providerName: string, modelId: string): stri
 export interface ResolvedOfficialAiModel {
   provider: AiProvider
   model: AiProviderModel
-}
-
-/**
- * 将官方 WebSocket 地址转换为 HTTP API 地址。
- * @param serverUrl 官方同步服务地址
- * @returns 对应的 HTTP API 地址
- */
-function syncServerUrlToHttp(serverUrl: string): string {
-  return serverUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://')
 }
 
 /**
@@ -131,10 +122,9 @@ class OfficialAIService {
     if (!force && this.catalogCache && this.catalogCache.expiresAt > Date.now()) {
       return this.catalogCache.value
     }
-    const response = await fetch(
-      `${syncServerUrlToHttp(OFFICIAL_SYNC_SERVER_URL)}/api/ai/official/models`,
-      { headers: { Accept: 'application/json' } }
-    )
+    const response = await fetch(`${OFFICIAL_SERVER_HTTP_URL}/api/ai/official/models`, {
+      headers: { Accept: 'application/json' }
+    })
     const data = (await response.json()) as OfficialAiModelCatalog & { error?: string }
     if (!response.ok || !data.provider || !Array.isArray(data.models)) {
       throw new Error(data.error || '获取 ZTools 官方模型失败')
@@ -308,7 +298,7 @@ class OfficialAIService {
       provider: {
         id: OFFICIAL_PROVIDER_ID,
         name: catalog.provider.name || OFFICIAL_PROVIDER_NAME,
-        apiUrl: `${syncServerUrlToHttp(OFFICIAL_SYNC_SERVER_URL)}/api/ai/official/v1`,
+        apiUrl: `${OFFICIAL_SERVER_HTTP_URL}/api/ai/official/v1`,
         apiKey: session.token,
         apiFormat: 'openai-chat',
         enabled: true,
@@ -347,7 +337,7 @@ class OfficialAIService {
   ): Promise<T> {
     let session = await this.loadUsableSession()
     if (!session?.token) throw new Error('未登录')
-    const endpoint = `${syncServerUrlToHttp(OFFICIAL_SYNC_SERVER_URL)}${path}`
+    const endpoint = `${OFFICIAL_SERVER_HTTP_URL}${path}`
     const request = (token: string): Promise<Response> =>
       fetch(endpoint, {
         ...init,

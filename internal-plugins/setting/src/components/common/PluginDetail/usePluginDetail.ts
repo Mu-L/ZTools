@@ -223,6 +223,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     if (showDetail) {
       tabs.push({ id: 'detail', label: '详情' })
+      tabs.push({ id: 'releases', label: '更新日志' })
     }
 
     if (showCommands) {

@@ -388,13 +388,13 @@ export class PluginInstallerAPI {
 
     // 优先使用插件对象自带的下载地址，兼容第三方市场（如 badbear）直接提供的完整 URL；
     // 仅当插件未携带下载地址时，才回退到官方 server 端解析。
+    const marketApiBase = getPluginMarketApiBase()
     const providedDownloadUrl =
       typeof plugin?.downloadUrl === 'string' ? plugin.downloadUrl.trim() : ''
     if (providedDownloadUrl) {
-      return providedDownloadUrl
+      return this.resolveMarketDownloadURL(providedDownloadUrl, marketApiBase)
     }
 
-    const marketApiBase = getPluginMarketApiBase()
     const response = await requestPluginMarket(
       `${marketApiBase}/plugins/download?name=${encodeURIComponent(pluginName)}`,
       {},
@@ -403,13 +403,21 @@ export class PluginInstallerAPI {
     const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
     // 新版优先安装 ZPX；回退 ZIP 仅用于服务端滚动升级和历史插件数据。
     if (typeof data?.zpxDownloadUrl === 'string' && data.zpxDownloadUrl.trim()) {
-      return data.zpxDownloadUrl.trim()
+      return this.resolveMarketDownloadURL(data.zpxDownloadUrl.trim(), marketApiBase)
     }
     if (typeof data?.downloadUrl === 'string' && data.downloadUrl.trim()) {
-      return data.downloadUrl.trim()
+      return this.resolveMarketDownloadURL(data.downloadUrl.trim(), marketApiBase)
     }
 
     return ''
+  }
+
+  private resolveMarketDownloadURL(value: string, marketApiBase: string): string {
+    try {
+      return new URL(value, marketApiBase).toString()
+    } catch {
+      return value
+    }
   }
 
   /**

@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { DEFAULT_SYNC_SERVER_URL, syncServerUrlToHttp } from './renderer/pluginMarketConfig'
+import { OFFICIAL_SERVER_HTTP_URL } from '../../shared/syncServerUrl'
 import { httpRequest } from '../utils/httpRequest'
 import type { PlatformUpdateInfo, UpdateDownloadSource } from './platformUpdater/types'
 import databaseAPI from './shared/database'
@@ -61,7 +61,7 @@ export async function fetchLatestServerUpdate(): Promise<ServerUpdateInfo | null
     updateChannel: getUpdateChannel()
   })
   const response = await httpRequest(
-    `${syncServerUrlToHttp(DEFAULT_SYNC_SERVER_URL)}/api/updates/latest?${query.toString()}`
+    `${OFFICIAL_SERVER_HTTP_URL}/api/updates/latest?${query.toString()}`
   )
   return (response.data as ServerUpdateResponse)?.update ?? null
 }
@@ -78,7 +78,7 @@ export async function fetchServerUpdateSources(version: string): Promise<UpdateD
     updateChannel: getUpdateChannel()
   })
   const response = await httpRequest(
-    `${syncServerUrlToHttp(DEFAULT_SYNC_SERVER_URL)}/api/updates/downloads?${query.toString()}`
+    `${OFFICIAL_SERVER_HTTP_URL}/api/updates/downloads?${query.toString()}`
   )
   const data = response.data as ServerDownloadsResponse
   return Array.isArray(data?.sources) ? data.sources : []

@@ -1,6 +1,8 @@
 import type { PluginManager } from '../../managers/pluginManager'
 import { dialog, shell } from 'electron'
+import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
+import os from 'os'
 import path from 'path'
 import { isBundledInternalPlugin } from '../../core/internalPlugins'
 import providerManager from '../../core/provider/providerManager'
@@ -328,7 +330,7 @@ export class PluginDevProjectsAPI {
   /**
    * 更新开发项目的排序顺序。
    * @param pluginNames - 期望的顺序（项目名称数组）
-   * @returns {success: boolean, error?: string}
+   * @returns 打包结果；成功时包含生成的包路径和实际版本号。
    */
   public async updateDevProjectsOrder(pluginNames: string[]): Promise<any> {
     try {
@@ -821,7 +823,7 @@ export class PluginDevProjectsAPI {
       await fs.cp(templateDir, projectDir, { recursive: true })
 
       // 替换 plugin.json 占位符
-      const pluginJsonPath = path.join(projectDir, 'public', 'plugin.json')
+      const pluginJsonPath = path.join(projectDir, 'src-ztools', 'plugin.json')
       try {
         let pluginJson = await fs.readFile(pluginJsonPath, 'utf-8')
         pluginJson = pluginJson
@@ -838,6 +840,19 @@ export class PluginDevProjectsAPI {
         await fs.writeFile(pluginJsonPath, pluginJson, 'utf-8')
       } catch (err) {
         console.warn('[DevProjects] 替换 plugin.json 占位符失败:', err)
+      }
+
+      // 使用创建项目当天的本地日期填充初始 CHANGELOG。
+      const changelogPath = path.join(projectDir, 'CHANGELOG.md')
+      try {
+        const changelog = await fs.readFile(changelogPath, 'utf-8')
+        await fs.writeFile(
+          changelogPath,
+          changelog.replace(/\{\{CHANGELOG_DATE\}\}/g, new Date().toISOString().slice(0, 10)),
+          'utf-8'
+        )
+      } catch (err) {
+        console.warn('[DevProjects] 填充 CHANGELOG 日期失败:', err)
       }
 
       // 替换 package.json 占位符
@@ -868,17 +883,25 @@ export class PluginDevProjectsAPI {
 
   /**
    * 将开发项目打包为 ZPX 文件。
-   * 校验项目状态为 ready 后弹出保存对话框，将项目目录打包为 .zpx 文件。
+   * 校验项目状态为 ready 后，将项目目录打包为用户选择的文件或一次性临时文件。
    * @param projectName - 项目名称
    * @param packagePath - 可选，指定打包目录的绝对路径，省略时打包整个项目根目录
    * @param version - 可选，指定打包版本号，会临时覆盖 plugin.json 中的 version 字段
-   * @returns {success: boolean, error?: string}
+   * @param outputMode - 输出模式；temporary 用于上传流程，不弹保存窗口
+   * @returns 打包结果；临时模式会额外标记 temporaryPackage
    */
   public async packageDevProject(
     projectName: string,
     packagePath?: string,
+    version?: string,
+    outputMode: 'save' | 'temporary' = 'save'
+  ): Promise<{
+    success: boolean
+    error?: string
+    packagePath?: string
     version?: string
-  ): Promise<{ success: boolean; error?: string }> {
+    temporaryPackage?: boolean
+  }> {
     try {
       const registry = this.readRegistry()
       if (!registry.projects[projectName]) return { success: false, error: '开发项目不存在' }
@@ -924,28 +947,63 @@ export class PluginDevProjectsAPI {
       // 如果指定了版本号，临时修改打包目录中的 plugin.json
       const pluginJsonPath = path.join(targetPackagePath, 'plugin.json')
       let originalPluginJsonContent = ''
+      let shouldRestorePluginJson = false
       if (version) {
         try {
           originalPluginJsonContent = await fs.readFile(pluginJsonPath, 'utf-8')
           const config = JSON.parse(originalPluginJsonContent)
           config.version = version
           await fs.writeFile(pluginJsonPath, JSON.stringify(config, null, 2), 'utf-8')
+          shouldRestorePluginJson = true
         } catch {
           return { success: false, error: '修改 plugin.json 版本号失败' }
         }
       }
 
-      const result = await dialog.showSaveDialog(this.deps.mainWindow!, {
-        title: '保存插件包',
-        defaultPath: `${projectName}-v${resolvedVersion}.zpx`,
-        filters: [{ name: '插件包', extensions: ['zpx'] }]
-      })
+      try {
+        // 审核上传使用唯一临时文件，避免打断用户要求选择持久化保存位置。
+        if (outputMode === 'temporary') {
+          const safeProjectName = projectName.replace(/[^a-zA-Z0-9_-]/g, '-')
+          const temporaryPackagePath = path.join(
+            os.tmpdir(),
+            `ztools-plugin-upload-${safeProjectName}-${randomUUID()}.zpx`
+          )
+          try {
+            await packZpx(targetPackagePath, temporaryPackagePath)
+          } catch (error) {
+            // 打包中断时移除可能生成的不完整文件，避免系统临时目录累积垃圾。
+            await fs.rm(temporaryPackagePath, { force: true }).catch(() => undefined)
+            throw error
+          }
+          return {
+            success: true,
+            packagePath: temporaryPackagePath,
+            version: resolvedVersion,
+            temporaryPackage: true
+          }
+        }
 
-      if (result.canceled || !result.filePath) return { success: false, error: '已取消' }
+        // 手动打包仍保留保存对话框和 Finder 定位行为。
+        const result = await dialog.showSaveDialog(this.deps.mainWindow!, {
+          title: '保存插件包',
+          defaultPath: `${projectName}-v${resolvedVersion}.zpx`,
+          filters: [{ name: '插件包', extensions: ['zpx'] }]
+        })
 
-      await packZpx(targetPackagePath, result.filePath)
-      shell.showItemInFolder(result.filePath)
-      return { success: true }
+        if (result.canceled || !result.filePath) return { success: false, error: '已取消' }
+
+        await packZpx(targetPackagePath, result.filePath)
+        shell.showItemInFolder(result.filePath)
+        return { success: true, packagePath: result.filePath, version: resolvedVersion }
+      } finally {
+        if (shouldRestorePluginJson) {
+          try {
+            await fs.writeFile(pluginJsonPath, originalPluginJsonContent, 'utf-8')
+          } catch (restoreError) {
+            console.warn('[DevProjects] 恢复 plugin.json 版本失败:', restoreError)
+          }
+        }
+      }
     } catch (error: unknown) {
       console.error('[DevProjects] 打包失败:', error)
       return { success: false, error: formatError(error, '打包失败') }

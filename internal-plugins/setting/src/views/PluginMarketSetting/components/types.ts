@@ -10,6 +10,8 @@ export interface Plugin {
   version: string
   downloadUrl?: string
   downloadCount?: number
+  sourceType?: 'open_source' | 'closed_source'
+  sourceLabel?: string
   installed: boolean
   path?: string
   localVersion?: string

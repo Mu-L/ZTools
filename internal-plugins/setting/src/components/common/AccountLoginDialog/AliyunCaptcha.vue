@@ -68,7 +68,7 @@ const props = withDefaults(
     serverUrl?: string
   }>(),
   {
-    serverUrl: 'wss://z-tools.top'
+    serverUrl: 'wss://z.zosen.link'
   }
 )
 

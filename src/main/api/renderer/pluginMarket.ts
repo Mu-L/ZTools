@@ -1,5 +1,6 @@
 import { httpGet } from '../../utils/httpRequest.js'
 import databaseAPI from '../shared/database'
+import type { PluginReleaseHistoryResult } from '../../../shared/pluginReleaseHistory'
 import {
   PluginMarketAuthRequiredError,
   PluginMarketAuthMode,
@@ -24,6 +25,8 @@ export type PluginMarketPlugin = {
   publishedAt?: number
   categoryId?: number | null
   categoryTitle?: string
+  sourceType?: 'open_source' | 'closed_source'
+  sourceLabel?: string
   [key: string]: unknown
 }
 
@@ -359,6 +362,34 @@ export class PluginMarketAPI {
       throw new Error('市场最新版本响应无效')
     }
     return { available: true, plugin: data.plugin }
+  }
+
+  /**
+   * 获取已发布的插件版本日志，沿用市场地址及本地开发覆盖配置。
+   * @param pluginName 插件唯一名称。
+   * @param offset 已读取的版本条数。
+   * @returns 已发布版本日志和上游缓存状态。
+   * @throws 网络失败或响应格式无效时抛出错误。
+   */
+  public async fetchReleaseHistory(
+    pluginName: string,
+    offset = 0
+  ): Promise<PluginReleaseHistoryResult> {
+    if (typeof pluginName !== 'string' || !pluginName.trim()) {
+      throw new Error('插件名称不能为空')
+    }
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('无效的日志分页')
+    const query = new URLSearchParams({
+      name: pluginName.trim(),
+      limit: '20',
+      offset: String(offset)
+    })
+    const response = await requestPluginMarket(`/plugins/releases?${query}`)
+    const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
+    if (!data || !Array.isArray(data.items) || typeof data.currentVersion !== 'string') {
+      throw new Error('更新日志响应无效')
+    }
+    return data as PluginReleaseHistoryResult
   }
 
   public async fetchPluginMarketRecommendations(

@@ -1030,12 +1030,13 @@ window.ztools = {
         pluginName,
         configPath
       ),
-    packageDevProject: async (pluginName, packagePath, version) =>
+    packageDevProject: async (pluginName, packagePath, version, outputMode) =>
       await electron.ipcRenderer.invoke(
         'internal:package-dev-project',
         pluginName,
         packagePath,
-        version
+        version,
+        outputMode
       ),
     deletePlugin: async (pluginPath, options) =>
       await electron.ipcRenderer.invoke('internal:delete-plugin', pluginPath, options),
@@ -1089,6 +1090,8 @@ window.ztools = {
       await electron.ipcRenderer.invoke('internal:install-plugin-from-npm', options),
     getPluginReadme: async (pluginPathOrName, pluginName) =>
       await electron.ipcRenderer.invoke('internal:get-plugin-readme', pluginPathOrName, pluginName),
+    getPluginReleaseHistory: async (pluginName, offset) =>
+      await electron.ipcRenderer.invoke('internal:get-plugin-release-history', pluginName, offset),
     getPluginDocKeys: async (pluginRef) =>
       await electron.ipcRenderer.invoke('internal:get-plugin-doc-keys', pluginRef),
     getPluginDoc: async (pluginRef, docKey) =>

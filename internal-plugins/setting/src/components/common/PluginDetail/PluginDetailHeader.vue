@@ -98,6 +98,15 @@ function openHomepage(): void {
             <span class="detail-name">{{ plugin.title || plugin.name }}</span>
             <slot name="title-badge" />
             <span
+              class="source-badge"
+              :class="{ 'source-badge--closed': plugin.sourceType === 'closed_source' }"
+            >
+              {{
+                plugin.sourceLabel ||
+                (plugin.sourceType === 'closed_source' ? '闭源插件' : '开源插件')
+              }}
+            </span>
+            <span
               v-for="p in providerLabels"
               :key="p.type"
               class="provider-badge"
@@ -453,6 +462,23 @@ function openHomepage(): void {
   align-items: baseline;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.source-badge {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  color: var(--primary-color);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.source-badge--closed {
+  border-color: color-mix(in srgb, var(--warning-color) 35%, transparent);
+  background: color-mix(in srgb, var(--warning-color) 12%, transparent);
+  color: var(--warning-color);
 }
 
 .provider-badge {

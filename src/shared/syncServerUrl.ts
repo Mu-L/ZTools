@@ -1,4 +1,12 @@
-export const OFFICIAL_SYNC_SERVER_URL = 'wss://z.zosen.link'
+declare const __ZTOOLS_OFFICIAL_SYNC_SERVER_URL__: string
+
+// 官方配置只接受 HTTP(S)；API 直接使用该地址，仅同步侧派生 WebSocket 地址。
+const configuredServerUrl =
+  typeof __ZTOOLS_OFFICIAL_SYNC_SERVER_URL__ === 'string'
+    ? __ZTOOLS_OFFICIAL_SYNC_SERVER_URL__.trim() || 'https://z.zosen.link'
+    : 'https://z.zosen.link'
+export const OFFICIAL_SERVER_HTTP_URL = normalizeHttpServerUrl(configuredServerUrl)
+export const OFFICIAL_SYNC_SERVER_URL = normalizeSyncServerUrl(OFFICIAL_SERVER_HTTP_URL)
 export const LEGACY_OFFICIAL_SYNC_SERVER_URLS = ['wss://z-tools.top'] as const
 
 const TRUSTED_OFFICIAL_SYNC_SERVER_URLS = new Set<string>([
@@ -7,12 +15,12 @@ const TRUSTED_OFFICIAL_SYNC_SERVER_URLS = new Set<string>([
 ])
 
 /**
- * 将用户输入的 HTTP 或 WebSocket 地址规范化为同步客户端使用的 WebSocket origin。
- * @param input 用户填写的同步服务器地址。
- * @returns 去除末尾斜杠后的 ws 或 wss 服务地址。
+ * 校验完整 Server 地址，不补全域名或推断协议。
+ * @param input 带 http/https/ws/wss 协议的地址。
+ * @returns 已校验的服务器 URL。
  * @throws 当地址为空、协议不受支持、包含凭据、查询参数、锚点或非根路径时抛出错误。
  */
-export function normalizeSyncServerUrl(input: string): string {
+function parseServerAddress(input: string): URL {
   const value = input.trim()
   if (!value) throw new Error('请填写服务器地址')
 
@@ -34,8 +42,34 @@ export function normalizeSyncServerUrl(input: string): string {
     throw new Error('服务器地址暂不支持子路径')
   }
 
-  parsed.protocol = parsed.protocol === 'https:' || parsed.protocol === 'wss:' ? 'wss:' : 'ws:'
+  return parsed
+}
+
+/**
+ * 将 Server 地址转换为同步客户端使用的 WebSocket origin。
+ * @param input 完整 HTTP(S) 地址或已保存的 WS/WSS 同步地址。
+ * @returns ws 或 wss 服务地址，保持现有会话与同步 checkpoint 的地址格式。
+ * @throws 地址不合法时抛出校验错误。
+ */
+export function normalizeSyncServerUrl(input: string): string {
+  const parsed = parseServerAddress(input)
+  // HTTP 和 WebSocket 使用同一服务地址，TLS 选择保持一致。
+  parsed.protocol = ['https:', 'wss:'].includes(parsed.protocol) ? 'wss:' : 'ws:'
   parsed.pathname = ''
+  return parsed.origin
+}
+
+/**
+ * 校验官方 Server 配置，HTTP 客户端直接使用返回值，不转换协议。
+ * @param input 带 http 或 https 协议的 Server 地址。
+ * @returns 不含末尾斜杠的 http 或 https 服务地址。
+ * @throws 地址不合法时抛出校验错误。
+ */
+export function normalizeHttpServerUrl(input: string): string {
+  const parsed = parseServerAddress(input)
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('ZTOOLS_OFFICIAL_SYNC_SERVER_URL 必须使用 http:// 或 https://')
+  }
   return parsed.origin
 }
 

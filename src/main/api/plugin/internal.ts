@@ -266,27 +266,6 @@ export class InternalPluginAPI {
     })
 
     ipcMain.handle(
-      'internal:scaffold-dev-project',
-      async (
-        event,
-        params: {
-          template: 'vue-vite' | 'react-vite'
-          projectPath: string
-          name: string
-          title: string
-          description?: string
-          platform?: string[]
-          author?: string
-        }
-      ) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:scaffold-dev-project')
-        }
-        return await pluginsAPI.devProjects.scaffoldDevProject(params)
-      }
-    )
-
-    ipcMain.handle(
       'internal:update-dev-project-meta',
       async (
         event,
@@ -364,11 +343,22 @@ export class InternalPluginAPI {
 
     ipcMain.handle(
       'internal:package-dev-project',
-      async (event, pluginName: string, packagePath?: string, version?: string) => {
+      async (
+        event,
+        pluginName: string,
+        packagePath?: string,
+        version?: string,
+        outputMode?: 'save' | 'temporary'
+      ) => {
         if (!requireInternalPlugin(this.pluginManager, event)) {
           throw new PermissionDeniedError('internal:package-dev-project')
         }
-        return await pluginsAPI.devProjects.packageDevProject(pluginName, packagePath, version)
+        return await pluginsAPI.devProjects.packageDevProject(
+          pluginName,
+          packagePath,
+          version,
+          outputMode
+        )
       }
     )
 
@@ -525,6 +515,16 @@ export class InternalPluginAPI {
           throw new PermissionDeniedError('internal:get-plugin-readme')
         }
         return await pluginsAPI.getPluginReadme(pluginPathOrName, pluginName)
+      }
+    )
+
+    ipcMain.handle(
+      'internal:get-plugin-release-history',
+      async (event, pluginName: string, offset?: number) => {
+        if (!requireInternalPlugin(this.pluginManager, event)) {
+          throw new PermissionDeniedError('internal:get-plugin-release-history')
+        }
+        return await pluginsAPI.market.fetchReleaseHistory(pluginName, offset)
       }
     )
 

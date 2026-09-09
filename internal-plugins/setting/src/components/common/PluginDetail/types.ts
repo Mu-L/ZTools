@@ -22,6 +22,8 @@ export interface PluginItem {
   downloadCount?: number
   author?: string
   homepage?: string
+  sourceType?: 'open_source' | 'closed_source'
+  sourceLabel?: string
 }
 
 export interface DocItem {
@@ -29,7 +31,7 @@ export interface DocItem {
   type: 'document' | 'attachment'
 }
 
-export type TabId = 'detail' | 'commands' | 'data' | 'comments'
+export type TabId = 'detail' | 'releases' | 'commands' | 'data' | 'comments'
 
 export interface TabItem {
   id: TabId

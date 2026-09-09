@@ -268,6 +268,10 @@ declare global {
         }>
 
         // 插件数据管理
+        getPluginReleaseHistory: (
+          pluginName: string,
+          offset?: number
+        ) => Promise<import('@shared/pluginReleaseHistory').PluginReleaseHistoryResult>
         getPluginReadme: (pluginPath: string) => Promise<{
           success: boolean
           content?: string

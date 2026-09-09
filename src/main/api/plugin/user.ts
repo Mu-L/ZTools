@@ -6,12 +6,12 @@ import {
   refreshOfficialAccountTokens
 } from '../../core/account/officialAccountService'
 import { getCurrentUserInfo } from '../../core/account/userProfileStore'
-import { OFFICIAL_SYNC_SERVER_URL } from '../../../shared/syncServerUrl'
+import { OFFICIAL_SERVER_HTTP_URL } from '../../../shared/syncServerUrl'
 import { httpRequest, type HttpResponse } from '../../utils/httpRequest.js'
 import { registerPluginApiServices } from './pluginApiDispatcher'
 
 const PLUGIN_TOKEN_REFRESH_WINDOW_MS = 30_000
-const PLUGIN_TOKEN_ENDPOINT = `${OFFICIAL_SYNC_SERVER_URL.replace(/^wss:/, 'https:')}/api/auth/plugin-token`
+const PLUGIN_TOKEN_ENDPOINT = `${OFFICIAL_SERVER_HTTP_URL}/api/auth/plugin-token`
 
 export interface PluginTemporaryToken {
   token: string

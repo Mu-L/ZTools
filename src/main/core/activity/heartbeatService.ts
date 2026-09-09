@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import pluginDeviceAPI from '../../api/plugin/device'
 import { httpRequest } from '../../utils/httpRequest'
-import { DEFAULT_SYNC_SERVER_URL, syncServerUrlToHttp } from '../../api/renderer/pluginMarketConfig'
+import { OFFICIAL_SERVER_HTTP_URL, OFFICIAL_SYNC_SERVER_URL } from '../../../shared/syncServerUrl'
 import {
   loadOfficialAccountSession,
   refreshOfficialAccountTokens
@@ -94,28 +94,25 @@ class ActivityHeartbeatService {
     config: CredentialSession | null
   ): Promise<{ status: number; update: ServerUpdateInfo | null }> {
     const deviceId = pluginDeviceAPI.getDeviceIdPublic()
-    const token = config?.serverUrl === DEFAULT_SYNC_SERVER_URL ? config.token : ''
+    const token = config?.serverUrl === OFFICIAL_SYNC_SERVER_URL ? config.token : ''
 
     // 使用 Electron 实际应用版本，确保开发和打包环境的上报来源一致。
     const ztoolsVersion = app.getVersion()
-    const response = await httpRequest(
-      `${syncServerUrlToHttp(DEFAULT_SYNC_SERVER_URL)}/api/activity/heartbeat`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          deviceId,
-          uid: token ? config?.username || '' : '',
-          ztoolsVersion,
-          systemType: getUpdateSystemType(),
-          updateChannel: getUpdateChannel()
-        }),
-        validateStatus: (status) => (status >= 200 && status < 300) || status === 401
-      }
-    )
+    const response = await httpRequest(`${OFFICIAL_SERVER_HTTP_URL}/api/activity/heartbeat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        deviceId,
+        uid: token ? config?.username || '' : '',
+        ztoolsVersion,
+        systemType: getUpdateSystemType(),
+        updateChannel: getUpdateChannel()
+      }),
+      validateStatus: (status) => (status >= 200 && status < 300) || status === 401
+    })
     return {
       status: response.status,
       update: response.status === 200 ? (response.data?.update ?? null) : null

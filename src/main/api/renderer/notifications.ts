@@ -1,11 +1,10 @@
 import { app } from 'electron'
 import { getUpdateChannel } from '../serverUpdateCatalog'
+import { OFFICIAL_SERVER_HTTP_URL } from '../../../shared/syncServerUrl'
 import {
-  DEFAULT_SYNC_SERVER_URL,
   PluginMarketAuthMode,
   PluginMarketAuthRequiredError,
-  requestPluginMarket,
-  syncServerUrlToHttp
+  requestPluginMarket
 } from './pluginMarketConfig'
 
 export type ZToolsNotificationItem = {
@@ -72,7 +71,7 @@ class NotificationsAPI {
       query.set('limit', String(limit))
       if (unreadOnly) query.set('filter', 'unread')
       const response = await requestPluginMarket(
-        `${syncServerUrlToHttp(DEFAULT_SYNC_SERVER_URL)}/api/notifications?${query.toString()}`
+        `${OFFICIAL_SERVER_HTTP_URL}/api/notifications?${query.toString()}`
       )
       return { success: true, data: parsePage(response.data) }
     } catch (error: unknown) {
@@ -127,7 +126,7 @@ class NotificationsAPI {
    * @returns 完整通知接口地址。
    */
   private url(path: string): string {
-    return `${syncServerUrlToHttp(DEFAULT_SYNC_SERVER_URL)}${path}?${this.query().toString()}`
+    return `${OFFICIAL_SERVER_HTTP_URL}${path}?${this.query().toString()}`
   }
 
   /**

@@ -3,6 +3,7 @@ import { computed, onMounted, watch } from 'vue'
 import { CommandTag, FeatureCard, MatchCommandDetailDialog, TagDropdown } from '@/components'
 import { usePluginCommandActions } from '@/composables'
 import type { DocItem, PluginItem, TabId, TabItem } from './types'
+import PluginReleaseNotes from './PluginReleaseNotes.vue'
 
 const props = defineProps<{
   plugin: PluginItem
@@ -124,6 +125,12 @@ function formatDate(dateStr?: string): string {
         <div v-else-if="readmeContent" class="markdown-content" v-html="renderedMarkdown"></div>
         <div v-else class="empty-message">该插件暂无详情说明</div>
       </div>
+
+      <PluginReleaseNotes
+        v-if="activeTab === 'releases'"
+        :plugin-name="plugin.name"
+        :version="plugin.version"
+      />
 
       <!-- 指令列表 Tab -->
       <div v-if="activeTab === 'commands'" class="tab-panel">

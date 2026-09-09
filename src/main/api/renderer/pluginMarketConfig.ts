@@ -5,10 +5,9 @@ import {
 } from '../../core/account/officialAccountService'
 import type { HttpRequestOptions, HttpResponse } from '../../utils/httpRequest'
 import { httpRequest } from '../../utils/httpRequest.js'
-import { OFFICIAL_SYNC_SERVER_URL } from '../../../shared/syncServerUrl'
+import { OFFICIAL_SERVER_HTTP_URL } from '../../../shared/syncServerUrl'
 
-export const DEFAULT_SYNC_SERVER_URL = OFFICIAL_SYNC_SERVER_URL
-export const DEFAULT_PLUGIN_MARKET_API_BASE = `${OFFICIAL_SYNC_SERVER_URL.replace(/^wss:/, 'https:')}/api/market`
+export const DEFAULT_PLUGIN_MARKET_API_BASE = `${OFFICIAL_SERVER_HTTP_URL}/api/market`
 
 export class PluginMarketAuthRequiredError extends Error {
   constructor(message = '需要登录后操作') {
@@ -147,8 +146,4 @@ function safeParseJSON(value: string): any {
   } catch {
     return {}
   }
-}
-
-export function syncServerUrlToHttp(serverUrl: string): string {
-  return serverUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://')
 }

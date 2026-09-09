@@ -6,6 +6,12 @@ import { resolve } from 'path'
 
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf8'))
 const targetElectronVersion = packageJson.devDependencies.electron
+const officialSyncServerUrl =
+  process.env.ZTOOLS_OFFICIAL_SYNC_SERVER_URL?.trim() || 'https://z.zosen.link'
+
+const sharedDefines = {
+  __ZTOOLS_OFFICIAL_SYNC_SERVER_URL__: JSON.stringify(officialSyncServerUrl)
+}
 
 function getPlatformUpdaterEntry(): string {
   const targetPlatform = process.env.ZTOOLS_TARGET_PLATFORM || process.platform
@@ -19,7 +25,8 @@ function getPlatformUpdaterEntry(): string {
 export default defineConfig({
   main: {
     define: {
-      __ZTOOLS_TARGET_ELECTRON_VERSION__: JSON.stringify(targetElectronVersion)
+      __ZTOOLS_TARGET_ELECTRON_VERSION__: JSON.stringify(targetElectronVersion),
+      ...sharedDefines
     },
     resolve: {
       alias: {
@@ -37,6 +44,7 @@ export default defineConfig({
     }
   },
   preload: {
+    define: sharedDefines,
     resolve: {
       alias: {
         '@shared': resolve(__dirname, 'src/shared')
@@ -45,6 +53,7 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
+    define: sharedDefines,
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),

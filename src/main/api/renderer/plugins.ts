@@ -162,8 +162,13 @@ export class PluginsAPI {
     )
     ipcMain.handle(
       'package-dev-project',
-      (_event, pluginName: string, packagePath?: string, version?: string) =>
-        this.devProjects.packageDevProject(pluginName, packagePath, version)
+      (
+        _event,
+        pluginName: string,
+        packagePath?: string,
+        version?: string,
+        outputMode?: 'save' | 'temporary'
+      ) => this.devProjects.packageDevProject(pluginName, packagePath, version, outputMode)
     )
     ipcMain.handle('delete-plugin', (_event, pluginPath: string, options?: DeletePluginOptions) =>
       this.deletePlugin(pluginPath, options)
