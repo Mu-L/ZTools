@@ -3,16 +3,24 @@ import { useCommandDataStore } from '../stores/commandDataStore'
 import { useWindowStore } from '../stores/windowStore'
 
 /**
- * 去重：同一个 feature 只保留第一个匹配的 cmd
- * 插件类型用 path+featureCode 去重，非插件用 name+path 去重
+ * 去重搜索结果，并合并同一个系统应用展开出的本地化名称与别名。
+ *
+ * @param results 待去重的搜索结果
+ * @returns 保留首次出现结果的新数组
  */
 export function deduplicateResults<
-  T extends { type?: string; path: string; name: string; featureCode?: string }
+  T extends { type?: string; subType?: string; path: string; name: string; featureCode?: string }
 >(results: T[]): T[] {
   const seenFeatures = new Set<string>()
   return results.filter((item) => {
+    // 系统应用会把本地化名称和 Bundle 名称展开为多条搜索项，按路径合并避免重复展示。
+    const normalizedPath = item.path.replace(/\\/g, '/').toLowerCase()
     const featureKey =
-      item.type === 'plugin' ? `${item.path}:${item.featureCode}` : `${item.name}|${item.path}`
+      item.type === 'plugin'
+        ? `${item.path}:${item.featureCode}`
+        : item.type === 'direct' && item.subType === 'app'
+          ? `direct-app:${normalizedPath}`
+          : `${item.name}|${item.path}`
     if (seenFeatures.has(featureKey)) {
       return false
     }
@@ -150,7 +158,10 @@ export function useSearchResults(props: {
       return []
     }
 
-    return filterUnavailableWindowCommands(unifiedSearchResult.value.bestMatches)
+    // 搜索结果已按匹配度排序，去重时保留第一条即可展示最匹配的名称。
+    return deduplicateResults(
+      filterUnavailableWindowCommands(unifiedSearchResult.value.bestMatches)
+    )
   })
 
   // 最佳匹配（匹配指令：regex/img/files 类型）

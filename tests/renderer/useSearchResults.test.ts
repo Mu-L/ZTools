@@ -29,6 +29,47 @@ describe('deduplicateResults', () => {
       const deduped = deduplicateResults(results)
       expect(deduped).toHaveLength(2)
     })
+
+    it('应合并同一路径下不同显示名的系统应用别名', () => {
+      const results = [
+        {
+          name: 'WeChat',
+          path: '/Applications/WeChat.app',
+          type: 'direct',
+          subType: 'app'
+        },
+        {
+          name: '微信',
+          path: '/Applications/WeChat.app',
+          type: 'direct',
+          subType: 'app'
+        }
+      ]
+
+      const deduped = deduplicateResults(results)
+
+      expect(deduped).toHaveLength(1)
+      expect(deduped[0].name).toBe('WeChat')
+    })
+
+    it('应兼容路径大小写和分隔符差异', () => {
+      const results = [
+        {
+          name: 'WeChat',
+          path: 'C:\\Program Files\\Tencent\\WeChat.exe',
+          type: 'direct',
+          subType: 'app'
+        },
+        {
+          name: '微信',
+          path: 'c:/program files/tencent/wechat.exe',
+          type: 'direct',
+          subType: 'app'
+        }
+      ]
+
+      expect(deduplicateResults(results)).toHaveLength(1)
+    })
   })
 
   describe('插件类型', () => {
