@@ -277,4 +277,16 @@ describe('PluginInstallerAPI market download URL resolution', () => {
 
     expect(downloadUrl).toBe('https://example.test/demo.zip')
   })
+
+  it('resolves relative market package URLs against the official market base', async () => {
+    vi.mocked(requestPluginMarket).mockResolvedValue({
+      status: 200,
+      data: { zpxDownloadUrl: '/api/market/plugins/package?name=demo' }
+    } as any)
+    const { installer } = createInstaller()
+
+    const downloadUrl = await (installer as any).resolveMarketDownloadUrl({ name: 'demo' })
+
+    expect(downloadUrl).toBe('https://example.test/api/market/plugins/package?name=demo')
+  })
 })

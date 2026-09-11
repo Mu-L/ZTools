@@ -564,6 +564,10 @@ onMounted(async () => {
     isPinned.value = pinned
   })
 
+  window.electron.ipcRenderer.on('show-plugin-error', (message: string) => {
+    if (message) window.alert(message)
+  })
+
   // 监听插件设置子输入框占位符
   window.electron.ipcRenderer.on('update-sub-input-placeholder', (data: any) => {
     console.log('更新搜索框占位符:', data)

@@ -38,6 +38,7 @@ defineEmits<{
     :show-market-button="showMarketButton"
     :show-detail="false"
     :show-size="false"
+    :show-source-badge="false"
     @back="$emit('back')"
     @open="$emit('open')"
     @download="$emit('download')"

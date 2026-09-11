@@ -72,3 +72,30 @@ describe('PluginMarketAPI.fetchLatestPlugin', () => {
     })
   })
 })
+
+describe('PluginMarketAPI.fetchReleaseHistory', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('uses the configured market endpoint and forwards pagination', async () => {
+    mockRequestPluginMarket.mockResolvedValue({
+      status: 200,
+      data: JSON.stringify({ name: 'demo', currentVersion: '2.0.0', items: [], nextOffset: 40 })
+    })
+    await expect(new PluginMarketAPI().fetchReleaseHistory(' demo ', 20)).resolves.toMatchObject({
+      currentVersion: '2.0.0',
+      nextOffset: 40
+    })
+    expect(mockRequestPluginMarket).toHaveBeenCalledWith(
+      '/plugins/releases?name=demo&limit=20&offset=20'
+    )
+  })
+
+  it('rejects invalid input and invalid responses', async () => {
+    const api = new PluginMarketAPI()
+    await expect(api.fetchReleaseHistory('')).rejects.toThrow()
+    await expect(api.fetchReleaseHistory('demo', -1)).rejects.toThrow()
+    expect(mockRequestPluginMarket).not.toHaveBeenCalled()
+    mockRequestPluginMarket.mockResolvedValue({ status: 200, data: {} })
+    await expect(api.fetchReleaseHistory('demo')).rejects.toThrow('更新日志响应无效')
+  })
+})

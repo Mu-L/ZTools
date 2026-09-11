@@ -331,6 +331,14 @@ function closeRechargeDialog(): void {
         {{ displayCreditBalance }}
       </button>
       <span v-if="!loadingCredits">积分</span>
+      <button
+        type="button"
+        class="official-recharge-text"
+        aria-label="充值 AI 积分"
+        @click="openRechargeDialog"
+      >
+        充值
+      </button>
     </div>
   </div>
 
@@ -459,6 +467,24 @@ function closeRechargeDialog(): void {
 
 .official-credit-trigger:hover,
 .official-credit-trigger:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.official-recharge-text {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.official-recharge-text:hover,
+.official-recharge-text:focus-visible {
   outline: none;
   text-decoration: underline;
   text-underline-offset: 3px;

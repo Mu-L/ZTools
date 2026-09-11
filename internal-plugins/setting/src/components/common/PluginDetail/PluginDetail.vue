@@ -25,13 +25,15 @@ const props = withDefaults(
     showData?: boolean
     showSize?: boolean
     showDownloadCount?: boolean
+    showSourceBadge?: boolean
     showMarketButton?: boolean
     initialTab?: TabId
   }>(),
   {
     showDetail: true,
     showCommands: true,
-    showData: true
+    showData: true,
+    showSourceBadge: true
   }
 )
 
@@ -147,6 +149,7 @@ function onSwitchTab(tabId: TabId): void {
       :can-upgrade="canUpgrade"
       :show-size="showSize"
       :show-download-count="showDownloadCount"
+      :show-source-badge="showSourceBadge"
       @download="emit('download')"
       @upgrade="emit('upgrade')"
     >

@@ -175,7 +175,14 @@ const api = {
   onRedirectSearch: (callback: (data: { cmdName: string; payload?: any }) => void) => {
     ipcRenderer.on('redirect-search', (_event, data) => callback(data))
   },
-  onPluginOpened: (callback: (plugin: { name: string; logo: string; path: string }) => void) => {
+  onPluginOpened: (
+    callback: (plugin: {
+      name: string
+      logo: string
+      path: string
+      sourceType?: 'open_source' | 'closed_source'
+    }) => void
+  ) => {
     ipcRenderer.on('plugin-opened', (_event, plugin) => callback(plugin))
   },
   onPluginLoaded: (callback: (plugin: { name: string; path: string }) => void) => {

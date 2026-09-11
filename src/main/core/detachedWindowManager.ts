@@ -33,6 +33,10 @@ interface DetachedWindowInfo {
   pluginPath: string
   pluginName: string
   pluginLogo?: string
+  toggleDevTools?: (
+    webContents: Electron.WebContents,
+    pluginPath: string
+  ) => { success: boolean; error?: string }
   isAlwaysOnTop: boolean
   lastFocusTarget: 'titlebar' | 'plugin' // 记录最后一次焦点位置，用于窗口恢复
   savedFocusTarget: 'titlebar' | 'plugin' // 窗口失焦时快照的焦点状态
@@ -207,6 +211,10 @@ class DetachedWindowManager {
       subInputVisible?: boolean // 子输入框是否可见
       autoFocusSubInput?: boolean // 是否自动聚焦子输入框
       aiRequestStatus?: AiRequestStatus // 分离前该插件已有的 AI 请求状态
+      toggleDevTools?: (
+        webContents: Electron.WebContents,
+        pluginPath: string
+      ) => { success: boolean; error?: string }
     }
   ): BrowserWindow | null {
     try {
@@ -364,6 +372,7 @@ class DetachedWindowManager {
         pluginPath,
         pluginName,
         pluginLogo: options.logo,
+        toggleDevTools: options.toggleDevTools,
         isAlwaysOnTop: false,
         lastFocusTarget: options.autoFocusSubInput ? 'titlebar' : 'plugin',
         savedFocusTarget: options.autoFocusSubInput ? 'titlebar' : 'plugin'
@@ -404,7 +413,21 @@ class DetachedWindowManager {
       pluginView.webContents.on('focus', () => {
         windowInfo.lastFocusTarget = 'plugin'
         if (!pluginView.webContents.isDestroyed()) {
-          devToolsShortcut.register(pluginView.webContents)
+          devToolsShortcut.register(pluginView.webContents, () => {
+            if (windowInfo.toggleDevTools) {
+              const result = windowInfo.toggleDevTools(pluginView.webContents, pluginPath)
+              if (!result.success && result.error) {
+                win.webContents.send('show-plugin-error', result.error)
+              }
+              return
+            }
+
+            if (pluginView.webContents.isDevToolsOpened()) {
+              pluginView.webContents.closeDevTools()
+            } else {
+              pluginView.webContents.openDevTools({ mode: getDevToolsMode() })
+            }
+          })
         }
       })
 
@@ -477,14 +500,18 @@ class DetachedWindowManager {
           break
         case 'open-devtools':
           if (!pluginView.webContents.isDestroyed()) {
-            // 切换开发者工具（打开/关闭）
-            if (pluginView.webContents.isDevToolsOpened()) {
+            if (windowInfo.toggleDevTools) {
+              const result = windowInfo.toggleDevTools(
+                pluginView.webContents,
+                windowInfo.pluginPath
+              )
+              if (!result.success && result.error) {
+                win.webContents.send('show-plugin-error', result.error)
+              }
+            } else if (pluginView.webContents.isDevToolsOpened()) {
               pluginView.webContents.closeDevTools()
             } else {
-              const mode = getDevToolsMode()
-              if (!pluginView.webContents.isDestroyed()) {
-                pluginView.webContents.openDevTools({ mode })
-              }
+              pluginView.webContents.openDevTools({ mode: getDevToolsMode() })
             }
           }
           break

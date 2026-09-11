@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, session, shell } from 'electron'
+import { BrowserWindow, ipcMain, shell } from 'electron'
 import { readFile } from 'fs/promises'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -29,22 +29,9 @@ import {
   type SyncProfile
 } from '../../core/sync/syncProfileService'
 import { OFFICIAL_SYNC_SERVER_URL } from '../../../shared/syncServerUrl'
-import {
-  AFDIAN_PAYMENT_SELECT_WECHAT_SCRIPT,
-  isAllowedAfdianCheckoutURL
-} from '../../core/afdianPayment.js'
+import { openAfdianCheckout, closeAfdianCheckout } from '../../core/afdianPaymentWindow'
 import officialAIService from '../../core/officialAIService.js'
 import type { PluginManager } from '../../managers/pluginManager'
-
-// ZTools 已经确定了赞助金额和月份，支付页只保留订单信息、支付方式和提交按钮。
-// 这些选择器对应爱发电收银台的金额/月份选择组件，样式也会覆盖后续动态渲染的节点。
-const AFDIAN_PAYMENT_HIDE_AMOUNT_CSS = `
-.vm-p-level,
-.pick-month-box,
-.quick-time-select {
-  display: none !important;
-}
-`
 
 /**
  * 同步 API（WebSocket 版）
@@ -53,7 +40,6 @@ export class SyncAPI {
   private syncClient: SyncClient | null = null
   private pluginManager: PluginManager | null = null
   private mainWindow: BrowserWindow | null = null
-  private paymentWindow: BrowserWindow | null = null
   private lastSyncTimeSave: Promise<void> = Promise.resolve()
   private lastPersistedSyncTime = 0
   private statusNotifyTimer: ReturnType<typeof setTimeout> | null = null
@@ -1141,102 +1127,8 @@ export class SyncAPI {
    * @throws 链接不符合固定爱发电收银台格式或系统无法打开链接时抛出错误。
    */
   private async openAfdianPaymentURL(paymentUrl: string): Promise<void> {
-    if (!isAllowedAfdianCheckoutURL(paymentUrl)) throw new Error('支付链接无效')
-    // E2E 保留隐藏窗口的真实行为，但不创建网络窗口或影响用户环境。
-    if (process.env.ZTOOLS_E2E === '1') {
-      this.mainWindow?.hide()
-      return
-    }
-
-    // 复用已有支付窗口，避免用户重复点击生成多个收银台窗口。
-    if (this.paymentWindow && !this.paymentWindow.isDestroyed()) {
-      this.paymentWindow.show()
-      this.paymentWindow.focus()
-      this.mainWindow?.hide()
-      await this.paymentWindow.loadURL(paymentUrl)
-      await this.applyAfdianPaymentStyles(this.paymentWindow)
-      await this.selectAfdianWechatPayment(this.paymentWindow)
-      return
-    }
-
-    const paymentSession = session.fromPartition('persist:ztools-afdian-payment')
-
-    const paymentWindow = new BrowserWindow({
-      width: 480,
-      height: 760,
-      minWidth: 400,
-      minHeight: 600,
-      show: false,
-      title: '赞助送积分',
-      autoHideMenuBar: true,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        // 使用持久化且独立的分区，保留爱发电登录状态并避免和其他页面共享 Cookie。
-        session: paymentSession
-      }
-    })
-    this.paymentWindow = paymentWindow
-    paymentWindow.on('closed', () => {
-      if (this.paymentWindow === paymentWindow) this.paymentWindow = null
-    })
-    // 支付页只允许在爱发电站内打开新页面，避免外部页面借窗口跳转任意地址。
-    paymentWindow.webContents.setWindowOpenHandler(({ url }) => {
-      try {
-        const parsed = new URL(url)
-        return parsed.protocol === 'https:' && parsed.hostname === 'ifdian.net'
-          ? { action: 'allow' }
-          : { action: 'deny' }
-      } catch {
-        return { action: 'deny' }
-      }
-    })
-
-    // 先显示空白/加载中的支付窗口，避免网络或爱发电首屏加载较慢时用户误以为没有响应。
-    paymentWindow.show()
-    paymentWindow.focus()
-    this.mainWindow?.hide()
-
-    try {
-      await paymentWindow.loadURL(paymentUrl)
-      await this.applyAfdianPaymentStyles(paymentWindow)
-      await this.selectAfdianWechatPayment(paymentWindow)
-    } catch (error) {
-      if (!paymentWindow.isDestroyed()) paymentWindow.destroy()
-      if (this.paymentWindow === paymentWindow) this.paymentWindow = null
-      // 页面加载失败时恢复主窗口，确保用户仍能看到错误提示并重试。
-      this.mainWindow?.show()
-      throw error
-    }
-  }
-
-  /**
-   * 隐藏爱发电收银台中可修改金额和月份的控件，避免与 ZTools 已选订单信息不一致。
-   * @param paymentWindow 爱发电支付窗口
-   * @returns 样式注入完成后结束；注入失败时仅记录警告并继续支付流程
-   */
-  private async applyAfdianPaymentStyles(paymentWindow: BrowserWindow): Promise<void> {
-    try {
-      await paymentWindow.webContents.insertCSS(AFDIAN_PAYMENT_HIDE_AMOUNT_CSS)
-    } catch (error) {
-      // 第三方页面样式注入失败不应阻断订单支付，页面仍可正常打开。
-      console.warn('[Afdian Payment] 隐藏金额控件失败，继续使用支付页面:', error)
-    }
-  }
-
-  /**
-   * 在支付方式异步渲染后选中微信支付，避免用户每次手动切换。
-   * @param paymentWindow 爱发电支付窗口
-   * @returns 脚本提交完成后结束；页面脚本执行失败时仅记录警告
-   */
-  private async selectAfdianWechatPayment(paymentWindow: BrowserWindow): Promise<void> {
-    try {
-      await paymentWindow.webContents.executeJavaScript(AFDIAN_PAYMENT_SELECT_WECHAT_SCRIPT)
-    } catch (error) {
-      // 第三方页面脚本执行失败不阻断支付，保留爱发电默认支付方式。
-      console.warn('[Afdian Payment] 默认选择微信失败，继续使用支付页面:', error)
-    }
+    // AI 与插件共用收银台配置，但保留各自独立的窗口标识。
+    openAfdianCheckout('official-ai', paymentUrl, '赞助送积分', this.mainWindow)
   }
 
   /**
@@ -1244,11 +1136,7 @@ export class SyncAPI {
    * @returns 无返回值；没有支付窗口时也会确保主窗口恢复显示
    */
   private closeAfdianPaymentWindow(): void {
-    const paymentWindow = this.paymentWindow
-    if (paymentWindow && !paymentWindow.isDestroyed()) paymentWindow.destroy()
-    this.paymentWindow = null
-    this.mainWindow?.show()
-    this.mainWindow?.focus()
+    closeAfdianCheckout('official-ai', this.mainWindow)
   }
 
   /**

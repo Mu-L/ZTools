@@ -1080,7 +1080,10 @@ onMounted(() => {
   cleanupContextMenuListener?.()
   cleanupContextMenuListener = window.ztools.onContextMenuCommand(async (command) => {
     if (command === 'open-devtools') {
-      window.ztools.openPluginDevTools()
+      const result = await window.ztools.openPluginDevTools()
+      if (!result.success && result.error) {
+        window.alert(result.error)
+      }
     } else if (command === 'kill-plugin') {
       try {
         // 调用新接口：终止插件并返回搜索页面
@@ -1194,7 +1197,9 @@ async function handleSettingsClick(): Promise<void> {
 
     const menuItems = [
       { id: 'detach-plugin', label: `分离到独立窗口 (${detachShortcut})` },
-      { id: 'open-devtools', label: '打开开发者工具' },
+      ...(windowStore.currentPlugin.sourceType === 'closed_source'
+        ? []
+        : [{ id: 'open-devtools', label: '打开开发者工具' }]),
       {
         label: '插件设置',
         submenu: [

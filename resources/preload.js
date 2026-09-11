@@ -324,7 +324,60 @@ function createZBrowserClient() {
   return client
 }
 
+/**
+ * 发起当前插件的商品付款，并监听一次服务端确认后的成功回调。
+ * @param {{productId:string,orderNo:string,ext?:object}} input 商品及业务订单。
+ * @param {(order:object)=>void} callback 支付成功回调。
+ * @returns {Promise<object>} 创建结果，返回不代表付款成功。
+ * @throws {Error} 参数错误、取消或网络请求失败时抛出。
+ */
+async function requestPluginPayment(input, callback) {
+  if (typeof callback !== 'function') throw new Error('请提供支付成功回调')
+  const requestId = require('node:crypto').randomUUID()
+  let timer
+  /**
+   * 清理本次调用的监听器。
+   * @returns {void} 无返回值。
+   */
+  const cleanup = () => {
+    clearTimeout(timer)
+    electron.ipcRenderer.removeListener('plugin-payment-result', listener)
+    window.removeEventListener('unload', cleanup)
+  }
+  /**
+   * 仅消费属于本次请求的支付通知。
+   * @param {unknown} _event IPC 事件。
+   * @param {object} result 主进程确认结果。
+   * @returns {void} 无返回值。
+   */
+  const listener = (_event, result) => {
+    if (result?.requestId !== requestId) return
+    cleanup()
+    if (result.status === 'paid') {
+      try {
+        Promise.resolve(callback(result.order)).catch((error) =>
+          console.error('【插件支付】回调失败', error)
+        )
+      } catch (error) {
+        console.error('【插件支付】回调失败', error)
+      }
+    }
+  }
+  // 先注册再发 IPC，覆盖复用已支付订单时立即成功的情况。
+  electron.ipcRenderer.on('plugin-payment-result', listener)
+  window.addEventListener('unload', cleanup, { once: true })
+  timer = setTimeout(cleanup, 31 * 60_000)
+  try {
+    return await ipcInvoke('requestPayment', { ...toIpcCloneable(input), requestId })
+  } catch (error) {
+    cleanup()
+    throw error
+  }
+}
+
 window.ztools = {
+  requestPayment: requestPluginPayment,
+  getPaymentRecords: (query = {}) => ipcInvoke('getPaymentRecords', toIpcCloneable(query)),
   getAppName: () => 'ZTools',
   // 获取拖放文件的路径（Electron webUtils）
   getPathForFile: (file) => electron.webUtils.getPathForFile(file),

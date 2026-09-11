@@ -135,6 +135,39 @@ export class PluginManager {
   }
 
   /**
+   * 判断插件是否为需要保护源码的正式闭源插件。
+   * 开发模式插件即使来源类型为 closed_source，也保留调试能力，方便本地开发联调。
+   */
+  private isClosedSourcePlugin(pluginPath: string): boolean {
+    const pluginInfo = this.fetchPluginInfoFromDB(pluginPath)
+    if (pluginInfo?.isDevelopment === true) return false
+
+    if (pluginInfo?.sourceType === 'closed_source') return true
+
+    // 兼容尚未写入注册表 sourceType 的插件；plugin.json 只能提供更严格的限制，
+    // 不能把一个已标记为闭源的插件降级成开源。
+    try {
+      return this.readPluginConfig(pluginPath)?.sourceType === 'closed_source'
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * 获取插件 DevTools 权限。
+   * @param pluginPath 插件物理路径
+   */
+  public getPluginDevToolsPermission(pluginPath: string): {
+    allowed: boolean
+    error?: string
+  } {
+    if (this.isClosedSourcePlugin(pluginPath)) {
+      return { allowed: false, error: '闭源插件不支持打开开发者工具' }
+    }
+    return { allowed: true }
+  }
+
+  /**
    * 读取 plugin.json 配置
    */
   private readPluginConfig(pluginPath: string): any {
@@ -324,6 +357,14 @@ export class PluginManager {
     subInputPlaceholder: string,
     subInputVisible: boolean
   ): void {
+    const pluginInfoFromDB = this.fetchPluginInfoFromDB(pluginPath)
+    const sourceType =
+      pluginInfoFromDB?.isDevelopment === true
+        ? 'open_source'
+        : pluginInfoFromDB?.sourceType === 'closed_source' ||
+            pluginConfig.sourceType === 'closed_source'
+          ? 'closed_source'
+          : 'open_source'
     this.mainWindow?.webContents.send('plugin-opened', {
       name: pluginConfig.name,
       title: pluginConfig.title || pluginConfig.name,
@@ -331,7 +372,8 @@ export class PluginManager {
       path: pluginPath,
       cmdName,
       subInputPlaceholder,
-      subInputVisible
+      subInputVisible,
+      sourceType
     })
   }
 
@@ -750,13 +792,21 @@ export class PluginManager {
    */
   private registerMainWindowPluginEvents(view: WebContentsView, pluginPath: string): void {
     view.webContents.on('devtools-opened', () => {
+      const permission = this.getPluginDevToolsPermission(pluginPath)
+      if (!permission.allowed && !view.webContents.isDestroyed()) {
+        console.warn('[Plugin] 已阻止闭源插件开发者工具:', pluginPath)
+        view.webContents.closeDevTools()
+        return
+      }
       console.log('[Plugin] 插件开发者工具已打开')
     })
 
     view.webContents.on('focus', () => {
       windowManager.updateFocusTarget('plugin')
-      if (this.pluginView && !this.pluginView.webContents.isDestroyed()) {
-        devToolsShortcut.register(this.pluginView.webContents)
+      if (!view.webContents.isDestroyed()) {
+        devToolsShortcut.register(view.webContents, () => {
+          void this.togglePluginDevTools(view.webContents, pluginPath)
+        })
       }
     })
 
@@ -1365,29 +1415,59 @@ export class PluginManager {
     }
   }
 
-  // 切换当前插件的开发者工具（打开/关闭）
-  public async openPluginDevTools(): Promise<boolean> {
+  /**
+   * 切换指定插件视图的开发者工具，并统一执行闭源插件限制。
+   * @param webContents 插件视图的 WebContents
+   * @param pluginPath 插件物理路径
+   */
+  public togglePluginDevTools(
+    webContents: WebContents,
+    pluginPath: string
+  ): { success: boolean; error?: string } {
     try {
-      if (!this.pluginView || this.pluginView.webContents.isDestroyed()) {
-        console.log('[Plugin] 没有活动的插件视图')
-        return false
+      if (webContents.isDestroyed()) {
+        return { success: false, error: '插件视图不可用' }
       }
 
-      // 检查开发者工具是否已打开
-      if (this.pluginView.webContents.isDevToolsOpened()) {
-        // 如果已打开，关闭开发者工具
-        this.pluginView.webContents.closeDevTools()
+      // 已打开时允许关闭，避免权限变化后残留 DevTools 窗口。
+      if (webContents.isDevToolsOpened()) {
+        webContents.closeDevTools()
         console.log('[Plugin] 已关闭插件开发者工具')
-      } else {
-        // 如果未打开，打开开发者工具
-        const mode = getDevToolsMode()
-        this.pluginView.webContents.openDevTools({ mode })
-        console.log('[Plugin] 已打开插件开发者工具')
+        return { success: true }
       }
-      return true
+
+      const permission = this.getPluginDevToolsPermission(pluginPath)
+      if (!permission.allowed) {
+        console.warn('[Plugin] 已拒绝打开闭源插件开发者工具:', pluginPath)
+        return { success: false, error: permission.error }
+      }
+
+      const mode = getDevToolsMode()
+      webContents.openDevTools({ mode })
+      console.log('[Plugin] 已打开插件开发者工具')
+      return { success: true }
     } catch (error) {
-      console.error('[Plugin] 切换开发者工具失败:', error)
-      return false
+      console.error('[Plugin] 切换插件开发者工具失败:', error)
+      return { success: false, error: error instanceof Error ? error.message : '未知错误' }
+    }
+  }
+
+  // 切换当前插件的开发者工具（打开/关闭）
+  public async openPluginDevTools(): Promise<{ success: boolean; error?: string }> {
+    try {
+      if (
+        !this.pluginView ||
+        this.pluginView.webContents.isDestroyed() ||
+        !this.currentPluginPath
+      ) {
+        console.log('[Plugin] 没有活动的插件视图')
+        return { success: false, error: '没有活动的插件' }
+      }
+
+      return this.togglePluginDevTools(this.pluginView.webContents, this.currentPluginPath)
+    } catch (error) {
+      console.error('[Plugin] 切换插件开发者工具失败:', error)
+      return { success: false, error: error instanceof Error ? error.message : '未知错误' }
     }
   }
 
@@ -1972,7 +2052,9 @@ export class PluginManager {
           title: pluginConfig.title || pluginConfig.name,
           logo: logoUrl,
           searchQuery: '',
-          searchPlaceholder: '搜索...'
+          searchPlaceholder: '搜索...',
+          toggleDevTools: (webContents, currentPluginPath) =>
+            this.togglePluginDevTools(webContents, currentPluginPath)
         }
       )
 
@@ -2079,7 +2161,9 @@ export class PluginManager {
           subInputVisible: cached.subInputVisible !== undefined ? cached.subInputVisible : true,
           autoFocusSubInput: shouldAutoFocusSubInput, // 只有主窗口输入框聚焦时才自动聚焦
           // 独立标题栏可能晚于请求开始加载，因此初始化时同步当前聚合状态。
-          aiRequestStatus: aiRequestStatusTracker.get(cached.view.webContents.id)
+          aiRequestStatus: aiRequestStatusTracker.get(cached.view.webContents.id),
+          toggleDevTools: (webContents, currentPluginPath) =>
+            this.togglePluginDevTools(webContents, currentPluginPath)
         }
       )
 

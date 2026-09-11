@@ -31,6 +31,7 @@ interface PluginInfo {
   cmdName?: string
   subInputPlaceholder?: string
   subInputVisible?: boolean
+  sourceType?: 'open_source' | 'closed_source'
 }
 
 export const DEFAULT_PLACEHOLDER = '搜索应用和指令 / 粘贴文件或图片'

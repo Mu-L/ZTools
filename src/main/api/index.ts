@@ -40,6 +40,7 @@ import pluginToastAPI from './plugin/toast'
 import pluginToolsAPI from './plugin/tools'
 import pluginUIAPI from './plugin/ui'
 import pluginUserAPI from './plugin/user'
+import pluginPaymentAPI from './plugin/payment'
 import pluginWindowAPI from './plugin/window'
 import { setupImageAnalysisAPI } from './shared/imageAnalysis'
 import {
@@ -132,6 +133,7 @@ class APIManager {
     pluginLifecycleAPI.init(mainWindow, pluginManager)
     pluginUIAPI.init(mainWindow, pluginManager)
     pluginUserAPI.init(pluginManager)
+    pluginPaymentAPI.init(mainWindow, pluginManager)
     // 注入主题信息变更钩子：当主题色/材质变更时通知所有插件视图
     windowManager.setOnThemeInfoChanged(() => {
       pluginUIAPI.broadcastThemeInfoToAllPlugins()
@@ -213,12 +215,7 @@ class APIManager {
     ipcMain.handle('open-plugin-devtools', async () => {
       try {
         if (this.pluginManager) {
-          const result = await this.pluginManager.openPluginDevTools()
-          if (result) {
-            return { success: true }
-          } else {
-            return { success: false, error: '没有活动的插件' }
-          }
+          return await this.pluginManager.openPluginDevTools()
         }
         return { success: false, error: '功能不可用' }
       } catch (error: unknown) {

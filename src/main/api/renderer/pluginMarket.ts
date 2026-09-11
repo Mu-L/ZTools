@@ -222,6 +222,8 @@ export class PluginMarketAPI {
         return null
       }
 
+      this.syncInstalledPluginSourceTypes(cachedData)
+
       const storefrontFingerprint = databaseAPI.dbGet(
         PLUGIN_MARKET_STOREFRONT_FINGERPRINT_CACHE_KEY
       )
@@ -270,6 +272,7 @@ export class PluginMarketAPI {
         recent: recentRanking
       }
       const plugins = this.collectPlugins(marketData, rankings)
+      this.syncInstalledPluginSourceTypes(plugins)
       const storefront = this.buildPluginMarketStorefront(marketData, recommendations, rankings)
       const pluginMarketFingerprint = this.getPluginMarketFingerprint(plugins)
 
@@ -555,6 +558,38 @@ export class PluginMarketAPI {
   private parseMarketPluginsResponse(value: unknown): MarketPluginsResponse {
     const data = typeof value === 'string' ? JSON.parse(value) : value
     return data && typeof data === 'object' ? (data as MarketPluginsResponse) : {}
+  }
+
+  /**
+   * 用市场返回的权威来源类型补齐旧安装记录。
+   * 早期版本的本地插件注册表没有 sourceType，刷新市场后即可恢复闭源插件的限制。
+   */
+  private syncInstalledPluginSourceTypes(plugins: PluginMarketPlugin[]): void {
+    const installed = databaseAPI.dbGet('plugins')
+    if (!Array.isArray(installed) || !Array.isArray(plugins)) return
+
+    const sourceTypes = new Map(
+      plugins
+        .filter(
+          (plugin) =>
+            typeof plugin?.name === 'string' &&
+            plugin.name.trim() &&
+            (plugin.sourceType === 'open_source' || plugin.sourceType === 'closed_source')
+        )
+        .map((plugin) => [plugin.name, plugin.sourceType as 'open_source' | 'closed_source'])
+    )
+    let changed = false
+    const next = installed.map((plugin: any) => {
+      if (!plugin || plugin.isDevelopment === true || typeof plugin.name !== 'string') {
+        return plugin
+      }
+      const sourceType = sourceTypes.get(plugin.name)
+      if (!sourceType || plugin.sourceType === sourceType) return plugin
+      changed = true
+      return { ...plugin, sourceType }
+    })
+
+    if (changed) databaseAPI.dbPut('plugins', next)
   }
 
   private parseCommentPage(value: unknown): PluginMarketCommentPage {

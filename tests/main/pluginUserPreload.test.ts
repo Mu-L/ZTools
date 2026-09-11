@@ -36,7 +36,7 @@ describe('plugin preload user bridges', () => {
     })
     ipcRemoveListener.mockReset()
     ipcEmit.mockReset()
-    ;(globalThis as any).window = { addEventListener: vi.fn() }
+    ;(globalThis as any).window = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
 
     moduleLoader._load = ((request: string, parent: unknown, isMain: boolean) => {
       if (request === 'electron') {
@@ -81,5 +81,32 @@ describe('plugin preload user bridges', () => {
       expiredAt: 1_800_000_000_000
     })
     expect(ipcInvoke).toHaveBeenCalledWith('plugin.api', 'getUserTempToken', undefined)
+  })
+  it('注册付款监听早于 IPC，立即成功也不会丢失回调', async () => {
+    require(preloadPath)
+    const callback = vi.fn()
+    ipcInvoke.mockImplementation(async (_channel, api, payload) => {
+      expect(api).toBe('requestPayment')
+      const listener = ipcOn.mock.calls.find(
+        ([channel]) => channel === 'plugin-payment-result'
+      )?.[1]
+      expect(listener).toBeTypeOf('function')
+      listener(
+        {},
+        {
+          requestId: payload.requestId,
+          status: 'paid',
+          order: { orderId: 'PLtest', status: 'paid' }
+        }
+      )
+      return { orderId: 'PLtest', status: 'paid' }
+    })
+    await (globalThis as any).window.ztools.requestPayment(
+      { productId: 'p', orderNo: 'o' },
+      callback
+    )
+    expect(callback).toHaveBeenCalledOnce()
+    expect(callback).toHaveBeenCalledWith({ orderId: 'PLtest', status: 'paid' })
+    expect(ipcRemoveListener).toHaveBeenCalledWith('plugin-payment-result', expect.any(Function))
   })
 })

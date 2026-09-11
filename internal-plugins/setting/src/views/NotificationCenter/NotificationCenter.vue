@@ -76,7 +76,7 @@ async function openNotification(item: NotificationItem): Promise<void> {
     return
   }
 
-  if (item.type === 'system_announcement') {
+  if (item.type === 'system_announcement' || item.type === 'plugin_review_result') {
     selectedAnnouncement.value = item
     return
   }
@@ -305,7 +305,11 @@ function formatDetailTime(value: number): string {
     </Transition>
 
     <Transition name="slide">
-      <DetailPanel v-if="selectedAnnouncement" title="系统公告" @back="closeAnnouncement">
+      <DetailPanel
+        v-if="selectedAnnouncement"
+        :title="selectedAnnouncement.type === 'plugin_review_result' ? '插件审核消息' : '系统公告'"
+        @back="closeAnnouncement"
+      >
         <article class="announcement-detail">
           <header class="announcement-detail-header">
             <div class="announcement-detail-icon" :class="`level-${selectedAnnouncement.level}`">
@@ -313,7 +317,13 @@ function formatDetailTime(value: number): string {
             </div>
             <div class="announcement-detail-heading">
               <span class="announcement-detail-kind">
-                {{ selectedAnnouncement.level === 'important' ? '重要公告' : '系统公告' }}
+                {{
+                  selectedAnnouncement.type === 'plugin_review_result'
+                    ? '插件审核结果'
+                    : selectedAnnouncement.level === 'important'
+                      ? '重要公告'
+                      : '系统公告'
+                }}
               </span>
               <h2>{{ selectedAnnouncement.title }}</h2>
               <time>{{ formatDetailTime(selectedAnnouncement.createdAt) }}</time>

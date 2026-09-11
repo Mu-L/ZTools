@@ -50,7 +50,15 @@ export default defineConfig({
         '@shared': resolve(__dirname, 'src/shared')
       }
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          'afdian-payment': resolve(__dirname, 'src/preload/afdian-payment.ts')
+        }
+      }
+    }
   },
   renderer: {
     define: sharedDefines,
@@ -74,6 +82,7 @@ export default defineConfig({
           'super-panel': resolve(__dirname, 'src/renderer/super-panel.html'),
           updater: resolve(__dirname, 'src/renderer/updater.html'),
           'legacy-import': resolve(__dirname, 'src/renderer/legacy-import.html'),
+          'afdian-payment': resolve(__dirname, 'src/renderer/afdian-payment.html'),
           'accessibility-permission': resolve(
             __dirname,
             'src/renderer/accessibility-permission.html'

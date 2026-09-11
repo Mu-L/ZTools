@@ -54,7 +54,7 @@ export class PluginUserAPI {
    * @returns 仅包含临时令牌及其过期时间的 Promise。
    * @throws 未登录、调用者不是插件或服务端换取失败时抛出错误。
    */
-  private async handleGetUserTempToken(
+  public async handleGetUserTempToken(
     event: Electron.IpcMainInvokeEvent
   ): Promise<PluginTemporaryToken> {
     const pluginId = this.pluginManager?.getPluginManifestNameByWebContents(event.sender)
@@ -71,13 +71,23 @@ export class PluginUserAPI {
 
     // 合并同一用户和插件的并发请求，避免同时触发多次账户 token 刷新。
     const pending = this.pendingRequests.get(cacheKey)
-    if (pending) return pending
-    const request = this.fetchAndCacheTempToken(cacheKey, pluginId, session.token)
-    this.pendingRequests.set(cacheKey, request)
+    const request = pending || this.fetchAndCacheTempToken(cacheKey, pluginId, session.token)
+    if (!pending) this.pendingRequests.set(cacheKey, request)
     try {
-      return await request
+      const token = await request
+      // 换取令牌期间退出、换号或插件被卸载时，不把旧身份令牌交给新的页面。
+      const current = await loadOfficialAccountSession()
+      if (
+        !current?.token ||
+        current.username !== session.username ||
+        this.pluginManager?.getPluginManifestNameByWebContents(event.sender) !== pluginId
+      ) {
+        this.tokenCache.delete(cacheKey)
+        throw new Error('账号或插件状态已变化，请重试')
+      }
+      return token
     } finally {
-      this.pendingRequests.delete(cacheKey)
+      if (this.pendingRequests.get(cacheKey) === request) this.pendingRequests.delete(cacheKey)
     }
   }
 
@@ -100,7 +110,8 @@ export class PluginUserAPI {
       const refreshResult = await refreshOfficialAccountTokens()
       if (
         (refreshResult.status === 'refreshed' || refreshResult.status === 'reused') &&
-        refreshResult.session.token
+        refreshResult.session.token &&
+        cacheKey === `${refreshResult.session.username}\n${pluginId}`
       ) {
         response = await this.requestTempToken(pluginId, refreshResult.session.token)
       }

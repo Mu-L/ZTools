@@ -315,7 +315,10 @@ export class PluginInstallerAPI {
       const { config: marketConfig, isZpx } = await this.readPluginJson(tempFilePath)
       console.log(`[Plugins] 市场插件格式: ${isZpx ? 'ZPX' : 'ZIP（兼容）'}`)
 
-      const result = await this.installFromPackageFile(tempFilePath, isZpx, marketConfig)
+      const result = await this.installFromPackageFile(tempFilePath, isZpx, marketConfig, {
+        // 市场返回的来源类型由服务端维护，优先于插件包内可被用户修改的字段。
+        sourceType: plugin?.sourceType === 'closed_source' ? 'closed_source' : 'open_source'
+      })
       this.emitMarketDownloadProgress(task, {
         pluginName,
         taskId,
@@ -751,6 +754,10 @@ export class PluginInstallerAPI {
       features: config.features,
       path: pluginPath,
       storageKind,
+      sourceType:
+        extra?.sourceType === 'closed_source' || config.sourceType === 'closed_source'
+          ? 'closed_source'
+          : 'open_source',
       isDevelopment: false,
       installedAt: new Date().toISOString(),
       ...extra

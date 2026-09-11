@@ -5,6 +5,7 @@
 import type { CommonKeyboardModifier } from '@renderer/utils/convertKeyboardEvent'
 import type { SearchWallpaperConfig } from '@shared/searchWallpaper'
 import type { AiRequestStatusChange } from '@shared/aiRequestStatus'
+import type { AfdianPaymentMethod, AfdianPaymentWindowState } from '@shared/afdianPaymentWindow'
 
 /**
  * 上次匹配状态接口
@@ -65,6 +66,15 @@ interface PluginMarketDownloadProgress {
 
 declare global {
   interface Window {
+    afdianPayment: {
+      onState: (callback: (state: AfdianPaymentWindowState) => void) => () => void
+      sendLoginCode: (phone: string) => void
+      submitLoginCode: (phone: string, code: string) => void
+      selectMethod: (method: AfdianPaymentMethod) => void
+      submit: () => void
+      openOriginal: () => void
+      close: () => void
+    }
     electron: {
       ipcRenderer: {
         send: (channel: string, ...args: any[]) => void

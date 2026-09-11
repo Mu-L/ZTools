@@ -23,15 +23,21 @@ export function getDevToolsMode(): DevToolsMode {
  */
 class DevToolsShortcutManager {
   private currentTarget: Electron.WebContents | null = null
+  private currentToggleHandler: ((target: Electron.WebContents) => void | Promise<void>) | null =
+    null
   private readonly shortcut = platform.isMacOS ? 'Option+Command+I' : 'Ctrl+Shift+I'
 
   /**
    * 注册当前焦点的 DevTools 快捷键
    * @param target 需要打开开发者工具的 WebContents
    */
-  public register(target: Electron.WebContents): void {
+  public register(
+    target: Electron.WebContents,
+    toggleHandler?: (target: Electron.WebContents) => void | Promise<void>
+  ): void {
     // 如果已经注册且目标相同，无需重复注册
     if (this.currentTarget?.id === target.id && globalShortcut.isRegistered(this.shortcut)) {
+      this.currentToggleHandler = toggleHandler ?? null
       return
     }
 
@@ -39,11 +45,16 @@ class DevToolsShortcutManager {
     this.unregister()
 
     this.currentTarget = target
+    this.currentToggleHandler = toggleHandler ?? null
 
     // 注册全局快捷键
     const ret = globalShortcut.register(this.shortcut, async () => {
       if (this.currentTarget && !this.currentTarget.isDestroyed()) {
         console.log(`[DevTools] 触发开发者工具快捷键，目标: ${this.currentTarget.id}`)
+        if (this.currentToggleHandler) {
+          await this.currentToggleHandler(this.currentTarget)
+          return
+        }
         if (this.currentTarget.isDevToolsOpened()) {
           this.currentTarget.closeDevTools()
         } else {
@@ -66,6 +77,7 @@ class DevToolsShortcutManager {
       globalShortcut.unregister(this.shortcut)
     }
     this.currentTarget = null
+    this.currentToggleHandler = null
   }
 }
 
