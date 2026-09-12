@@ -21,6 +21,7 @@ const loading = ref(true)
 const isWorking = ref(false)
 const showEditor = ref(false)
 const editingProvider = ref<AiProvider | null>(null)
+const isCopyingProvider = ref(false)
 const officialProvider = ref<OfficialAiProviderStatus | null>(null)
 const officialError = ref('')
 const officialModelsExpanded = ref(false)
@@ -101,6 +102,7 @@ function handleAccountChanged(): void {
  */
 function showAddEditor(): void {
   editingProvider.value = null
+  isCopyingProvider.value = false
   showEditor.value = true
 }
 
@@ -111,6 +113,33 @@ function showAddEditor(): void {
  */
 function handleEdit(provider: AiProvider): void {
   editingProvider.value = provider
+  isCopyingProvider.value = false
+  showEditor.value = true
+}
+
+/**
+ * 打开指定供应商的可编辑副本，并为副本生成不重名的名称。
+ * @param provider 要复制的供应商
+ * @returns 无返回值
+ */
+function handleCopy(provider: AiProvider): void {
+  const existingNames = new Set(store.value.providers.map((item) => item.name.trim().toLowerCase()))
+  const baseName = `${provider.name} 副本`
+  let copyName = baseName
+  let sequence = 2
+  while (existingNames.has(copyName.trim().toLowerCase())) {
+    copyName = `${baseName} ${sequence}`
+    sequence += 1
+  }
+
+  // 复制时去掉内部 ID，保存时必须走新增接口；模型配置由编辑器重新建立响应式副本。
+  editingProvider.value = {
+    ...provider,
+    id: '',
+    name: copyName,
+    selectedModels: provider.selectedModels.map((model) => ({ ...model }))
+  }
+  isCopyingProvider.value = true
   showEditor.value = true
 }
 
@@ -121,6 +150,7 @@ function handleEdit(provider: AiProvider): void {
 function closeEditor(): void {
   showEditor.value = false
   editingProvider.value = null
+  isCopyingProvider.value = false
 }
 
 /**
@@ -466,6 +496,14 @@ onBeforeUnmount(() => {
                   <div class="i-z-settings font-size-16px" />
                 </button>
                 <button
+                  class="icon-btn"
+                  title="复制供应商"
+                  :disabled="isWorking"
+                  @click="handleCopy(provider)"
+                >
+                  <div class="i-z-copy font-size-16px" />
+                </button>
+                <button
                   class="icon-btn delete-button"
                   title="删除供应商"
                   :disabled="isWorking"
@@ -514,6 +552,7 @@ onBeforeUnmount(() => {
       <AiProviderEditor
         v-if="showEditor"
         :editing-provider="editingProvider"
+        :is-copying="isCopyingProvider"
         @back="closeEditor"
         @save="handleSave"
       />

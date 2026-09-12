@@ -1907,21 +1907,7 @@ onUnmounted(() => {
             title="重置"
             @click="handleResetPlaceholder"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="1 0 18 18"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M14.5 9C14.5 11.4853 12.4853 13.5 10 13.5C7.51472 13.5 5.5 11.4853 5.5 9C5.5 6.51472 7.51472 4.5 10 4.5C11.6569 4.5 13.0943 5.41421 13.8536 6.75M14 4V7H11"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <div class="i-z-refresh font-size-20px" />
           </button>
         </div>
       </div>
@@ -1946,21 +1932,7 @@ onUnmounted(() => {
             title="重置"
             @click="handleResetAvatar"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="1 0 18 18"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M14.5 9C14.5 11.4853 12.4853 13.5 10 13.5C7.51472 13.5 5.5 11.4853 5.5 9C5.5 6.51472 7.51472 4.5 10 4.5C11.6569 4.5 13.0943 5.41421 13.8536 6.75M14 4V7H11"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <div class="i-z-refresh font-size-20px" />
           </button>
         </div>
       </div>
@@ -2112,20 +2084,7 @@ onUnmounted(() => {
               title="清除"
               @click="handleClearTabTarget"
             >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 20 20"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M6 6L14 14M14 6L6 14"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  stroke-linecap="round"
-                />
-              </svg>
+              <div class="i-z-close font-size-20px" />
             </button>
           </div>
           <div class="hotkey-presets">
@@ -2240,21 +2199,7 @@ onUnmounted(() => {
             title="重置"
             @click="resetWindowDefaultHeight"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="1 0 18 18"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M14.5 9C14.5 11.4853 12.4853 13.5 10 13.5C7.51472 13.5 5.5 11.4853 5.5 9C5.5 6.51472 7.51472 4.5 10 4.5C11.6569 4.5 13.0943 5.41421 13.8536 6.75M14 4V7H11"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <div class="i-z-refresh font-size-20px" />
           </button>
         </div>
       </div>
@@ -2281,21 +2226,7 @@ onUnmounted(() => {
             title="重置"
             @click="resetClipboardRetentionDays"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="1 0 18 18"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M14.5 9C14.5 11.4853 12.4853 13.5 10 13.5C7.51472 13.5 5.5 11.4853 5.5 9C5.5 6.51472 7.51472 4.5 10 4.5C11.6569 4.5 13.0943 5.41421 13.8536 6.75M14 4V7H11"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <div class="i-z-refresh font-size-20px" />
           </button>
         </div>
       </div>
@@ -2461,20 +2392,7 @@ onUnmounted(() => {
             title="清除"
             @click="handleClearFloatingBallDoubleClick"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M6 6L14 14M14 6L6 14"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-            </svg>
+            <div class="i-z-close font-size-20px" />
           </button>
         </div>
       </div>

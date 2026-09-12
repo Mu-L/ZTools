@@ -734,37 +734,11 @@ async function handleInstallFromNpm(data: {
             <div class="more-menu-wrapper">
               <button class="btn btn-more" @click="toggleMoreMenu">
                 更多
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
+                <div class="i-z-chevron-down font-size-16px" />
               </button>
               <div v-if="showMoreMenu" class="more-menu" @click="closeMoreMenu">
                 <button class="more-menu-item" :disabled="isImporting" @click="importPlugin">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path
-                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                    ></path>
-                  </svg>
+                  <div class="i-z-folder font-size-16px" />
                   {{ isImporting ? '导入中...' : '导入本地插件' }}
                 </button>
                 <button
@@ -772,21 +746,7 @@ async function handleInstallFromNpm(data: {
                   :disabled="isImportingNpm"
                   @click="showNpmInstallPanel"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
+                  <div class="i-z-package font-size-16px" />
                   {{ isImportingNpm ? '安装中...' : '从 npm 安装' }}
                 </button>
                 <button
@@ -812,21 +772,7 @@ async function handleInstallFromNpm(data: {
                   :disabled="isExportingAll"
                   @click="handleExportAllPlugins"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="17 8 12 3 7 8"></polyline>
-                    <line x1="12" y1="3" x2="12" y2="15"></line>
-                  </svg>
+                  <div class="i-z-upload font-size-16px" />
                   {{ isExportingAll ? '导出中...' : '导出全部插件' }}
                 </button>
                 <button
@@ -834,19 +780,7 @@ async function handleInstallFromNpm(data: {
                   :disabled="isKillingAll || runningPluginsCount === 0"
                   @click="handleKillAllPlugins"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  </svg>
+                  <div class="i-z-stop font-size-16px" />
                   {{ isKillingAll ? '停止中...' : '停止所有插件' }}
                 </button>
               </div>
@@ -900,19 +834,7 @@ async function handleInstallFromNpm(data: {
                 title="打开插件"
                 @click.stop="handleOpenPlugin(plugin)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
+                <div class="i-z-play font-size-14px" />
               </button>
               <button
                 v-if="isPluginRunning(plugin.path)"
@@ -921,40 +843,14 @@ async function handleInstallFromNpm(data: {
                 :disabled="isKilling"
                 @click.stop="handleKillPlugin(plugin)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                </svg>
+                <div class="i-z-stop font-size-14px" />
               </button>
               <button
                 class="icon-btn folder-btn"
                 title="打开插件目录"
                 @click.stop="handleOpenFolder(plugin)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path
-                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                  ></path>
-                </svg>
+                <div class="i-z-folder font-size-14px" />
               </button>
               <button
                 class="icon-btn pin-btn"
@@ -962,21 +858,7 @@ async function handleInstallFromNpm(data: {
                 :title="isPluginPinned(plugin.path) ? '取消置顶' : '置顶'"
                 @click.stop="togglePin(plugin)"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <line x1="4" y1="4" x2="20" y2="4"></line>
-                  <polyline points="8 10 12 4 16 10"></polyline>
-                  <line x1="12" y1="10" x2="12" y2="20"></line>
-                </svg>
+                <div class="i-z-pin font-size-14px" />
               </button>
             </div>
           </div>
