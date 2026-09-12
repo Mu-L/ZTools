@@ -9,7 +9,6 @@ const items = ref<PluginReleaseHistoryItem[]>([])
 const currentVersion = ref('')
 const loading = ref(false)
 const error = ref('')
-const expanded = ref('')
 const nextOffset = ref<number>()
 let requestId = 0
 const renderedNotes = computed(() =>
@@ -40,7 +39,6 @@ async function load(more = false): Promise<void> {
     items.value = more ? [...items.value, ...result.items] : result.items
     nextOffset.value = result.nextOffset
     currentVersion.value = result.currentVersion
-    if (!more) expanded.value = result.items[0]?.version || ''
     error.value = result.error || ''
   } catch {
     if (id === requestId) error.value = '更新日志加载失败，请重试'
@@ -66,7 +64,6 @@ watch(
   () => [props.pluginName, props.version],
   () => {
     items.value = []
-    expanded.value = ''
     nextOffset.value = undefined
     void load()
   },
@@ -86,11 +83,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="!loading && !error && !items.length" class="release-state">暂无更新日志</div>
     <article v-for="item in renderedNotes" :key="item.version" class="release-item">
-      <button
-        class="release-heading"
-        :aria-expanded="expanded === item.version"
-        @click="expanded = expanded === item.version ? '' : item.version"
-      >
+      <div class="release-heading">
         <strong>v{{ item.version.replace(/^v/, '') }}</strong>
         <span v-if="item.version.replace(/^v/, '') === currentVersion.replace(/^v/, '')"
           >当前版本</span
@@ -98,11 +91,8 @@ onBeforeUnmount(() => {
         <time v-if="item.publishedAt">{{
           new Date(item.publishedAt).toLocaleDateString('zh-CN')
         }}</time>
-        <span class="release-toggle" aria-hidden="true">{{
-          expanded === item.version ? '−' : '+'
-        }}</span>
-      </button>
-      <div v-if="expanded === item.version" class="release-body">
+      </div>
+      <div class="release-body">
         <!-- eslint-disable-next-line vue/no-v-html -->
         <div v-if="item.releaseNotes" class="markdown-content" v-html="item.html"></div>
         <p v-else class="release-state">该版本暂无更新日志</p>
@@ -134,18 +124,11 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--text-color);
   text-align: left;
-  cursor: pointer;
-}
-.release-heading:hover {
-  background: var(--hover-bg);
 }
 .release-heading span,
 .release-heading time {
   font-size: 12px;
   color: var(--text-secondary);
-}
-.release-toggle {
-  margin-left: auto;
 }
 .release-body {
   padding: 0 8px 12px;
